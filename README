@@ -46,3 +46,18 @@ on projects where the size of messages passed over the network has
 shrunk by an order of magnitude when switching to an explicitly
 specified protocol.
 
+
+* Tasks
+
+** TODO Try using StringTemplate to generate the code
+
+** TODO Use Parsec.Token for the Lexer, rather than rolling my own combinators.
+
+** TODO Stop evaluating constants as part of the parse
+
+   - This loses the relationship between constants which I'd like to
+     preserve in the generated code
+
+   - We should check that the definitions are consistent however.
+     Maybe as a post parse pass ?
+
