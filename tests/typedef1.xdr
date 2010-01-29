@@ -1,0 +1,6 @@
+typedef int id_t;
+
+struct foo {
+       id_t id1;
+       id_t ids[23];
+};

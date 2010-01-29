@@ -1,0 +1,5 @@
+struct foo {
+       int fixed_width[23];
+       int var_width<23>;
+       int var_unlimited<>;
+};

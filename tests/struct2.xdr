@@ -1,0 +1,4 @@
+struct A {
+       int numbers[89];
+       string foo<>;
+};

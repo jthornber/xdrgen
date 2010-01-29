@@ -1,0 +1,11 @@
+enum colours {
+     RED = 1,
+     BLUE = 2,
+     GREEN = 3
+};
+
+enum shapes {
+     SQUARE = 5,
+     CIRCLE,
+     RECTANGLE
+};

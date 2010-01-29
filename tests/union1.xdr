@@ -1,0 +1,21 @@
+enum Colour {
+     RED = 1,
+     BLUE = 2,
+     GREEN = 3
+};
+
+struct get_msg {
+       get_msg *next;
+       string q_name<>;
+};
+
+union msg switch (Colour selector) {
+case RED:
+        int i;
+
+case BLUE:
+        get_msg g;
+
+default:
+        int def;
+};

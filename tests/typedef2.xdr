@@ -1,0 +1,7 @@
+const MAX_QUEUE = 128;
+typedef string q_name<MAX_QUEUE>;
+
+struct foo {
+       q_name name1;
+};
+

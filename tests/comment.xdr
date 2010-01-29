@@ -1,0 +1,28 @@
+/*
+ * Here's a comment.
+ */
+
+
+struct foo {
+        int x; /* this is another comment */
+        float f; /* this variable is called f */
+};
+
+/* blah */ // C++ style
+
+const count = /* lskjdfls */ 45 /* lskdfjlsk */ ;
+
+/*
+        Nested comment
+
+        /* lskdflsjk
+sldkfjlsdkjs
+lksjdfls */
+
+ const count = count;
+
+*/
+
+// const count = count;
+
+
