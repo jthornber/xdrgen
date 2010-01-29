@@ -24,6 +24,6 @@ main = do
   txt <- getContents
   putStrLn $ case parseString [] txt "" of
                Left errs  -> unlines . map show $ errs
-               Right spec -> ppCImpl $ spec
+               Right spec -> ppXDR $ spec
 
 ----------------------------------------------------------------
