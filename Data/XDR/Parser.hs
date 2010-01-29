@@ -12,10 +12,51 @@ import qualified Data.Map as M
 import Data.Maybe
 import Data.Set (Set)
 import qualified Data.Set as S
-import Text.ParserCombinators.Parsec as Parsec hiding (ParseError, Parser)
-import Text.ParserCombinators.Parsec.Expr
+
+import Text.Parsec hiding (ParseError)
+-- FIXME: convert to ByteString
+import Text.Parsec.String hiding (Parser)
+import Text.Parsec.Token (makeTokenParser, GenLanguageDef (..))
+import qualified Text.Parsec.Token as T
+import Text.Parsec.Expr
 
 import Data.XDR.AST
+
+----------------------------------------------------------------
+-- Lexer
+l = makeTokenParser $
+    LanguageDef { commentStart = "/*"
+                , commentEnd = "*/"
+                , commentLine = "//"
+                , nestedComments = True
+                , identStart = letter
+                , identLetter = alphaNum <|> char '_'
+                , opStart = oneOf "+-/*="
+                , opLetter = oneOf "+-/*="
+                , reservedNames = tokens
+                , reservedOpNames = ["+", "-", "/", "*", "="]
+                , caseSensitive = True
+                }
+    where
+      tokens = [ "bool", "case", "const", "default", "double", "quadruple", "enum"
+               , "float", "hyper", "opaque", "string", "struct", "switch", "typedef"
+               , "union", "unsigned", "void", "int"
+               ]
+
+angles = T.angles l
+braces = T.braces l
+colon = T.colon l
+comma = T.comma l
+commaSep = T.commaSep l
+commaSep1 = T.commaSep1 l
+identifier = T.identifier l
+integer = T.integer l
+parens = T.parens l
+reserved = T.reserved l
+reservedOp = T.reservedOp l
+semi = T.semi l
+squares = T.squares l
+whiteSpace = T.whiteSpace l
 
 ----------------------------------------------------------------
 
@@ -47,62 +88,12 @@ type Parser = GenParser Char Context
 
 ----------------------------------------------------------------
 
-semi :: Parser ()
-semi = text ";"
-
 discard :: Parser a -> Parser ()
 discard = (>> return ())
 
-comment :: Parser ()
-comment = try multiComment <|> singleComment
-
-singleComment :: Parser ()
-singleComment = discard (try (string "//") *> skipMany (satisfy (/= '\n')))
-
-multiComment :: Parser ()
-multiComment = try (string "/*") >> inMultiComment
-
-inMultiComment :: Parser ()
-inMultiComment = (discard $ try (string "*/")) <|>
-                 (multiComment >> inMultiComment) <|>
-                 (skipMany1 (noneOf startEnd) >> inMultiComment) <|>
-                 (oneOf startEnd >> inMultiComment)
-    where
-      startEnd = "/*"
-
-whitespace :: Parser ()
-whitespace = (spaces *> skipMany (comment *> spaces)) <?> "whitespace"
-
--- This consumes the whitespace _after_ a token, if we'd consumed
--- before we'd have to use 'try' everywhere since consuming
--- whitespace would cause a partial match and subsequent backtrack.
-tok :: Parser a -> Parser a
-tok p = p <* whitespace
-
-text :: String -> Parser ()
-text txt = discard (tok $ string txt)
-
-keywords :: Set String
-keywords = S.fromList [ "bool", "case", "const", "default", "double", "quadruple", "enum"
-                      , "float", "hyper", "opaque", "string", "struct", "switch", "typedef"
-                      , "union", "unsigned", "void", "int"
-                      ]
-
-identifier :: Parser String
-identifier = (try ident >>= lookup) <?> "identifier"
-    where
-      ident = tok $ (:) <$> letter <*> many (char '_' <|> alphaNum)
-      lookup t = if S.member t keywords then unexpected "keyword" else pure t
-
-number :: Parser Integer
-number = tok (readNumber <$> optionMaybe (char '-') <*> many1 digit)
-    where
-      readNumber Nothing xs = read xs
-      readNumber (Just _) xs = - (read xs)
-
 intConstant :: Parser Integer
 intConstant = do
-  ((identifier >>= check) <|> number) <?> "constant"
+  ((identifier >>= check) <|> integer) <?> "constant"
     where
       check name = do
                 ctxt <- getState
@@ -124,23 +115,19 @@ constExpr = buildExpressionParser table term
                 ]
               ]
 
-      prefix name fun = Prefix (do { text name; return fun })
-      binary name fun assoc = Infix (do { text name; return fun }) assoc
+      prefix name fun = Prefix (do { reservedOp name; return fun })
+      binary name fun assoc = Infix (do { reservedOp name; return fun }) assoc
 
       term = parens constExpr <|> intConstant 
-      parens body = text "(" *> body <* text ")"
 
 constant :: Parser Constant
 constant = ConstLit <$> constExpr
 
-bra :: String -> String -> Parser a -> Parser a
-bra b e p = text b *> p <* text e
-
 simpleType :: String -> Type -> Parser Type
-simpleType keyword t = const t <$> try (text keyword)
+simpleType keyword t = const t <$> try (reserved keyword)
 
 typeSpec :: Parser Type
-typeSpec = choice [ try (text "unsigned" *> (simpleType "int" TUInt <|> simpleType "hyper" TUHyper))
+typeSpec = choice [ try (reserved "unsigned" *> (simpleType "int" TUInt <|> simpleType "hyper" TUHyper))
                   , simpleType "int" TInt
                   , simpleType "hyper" THyper
                   , simpleType "float" TFloat
@@ -154,13 +141,13 @@ typeSpec = choice [ try (text "unsigned" *> (simpleType "int" TUInt <|> simpleTy
                   ] <?> "type"
 
 enumTypeSpec :: Parser Type
-enumTypeSpec = TEnum <$> (text "enum" *> enumDetail)
+enumTypeSpec = TEnum <$> (reserved "enum" *> enumDetail)
 
 enumDetail :: Parser EnumDetail
-enumDetail = setNextEnum 0 *> bra "{" "}" body
+enumDetail = setNextEnum 0 *> braces body
     where
-      body = EnumDetail <$> sepBy pair (text ",")
-      pair = ((,) <$> identifier <*> optionMaybe (text "=" *> constant)) >>= uncurry mkElem
+      body = EnumDetail <$> commaSep pair
+      pair = ((,) <$> identifier <*> optionMaybe (reservedOp "=" *> constant)) >>= uncurry mkElem
 
       setNextEnum n = do
         ctxt <- getState
@@ -181,45 +168,48 @@ enumDetail = setNextEnum 0 *> bra "{" "}" body
         pure (n, ConstLit v)
 
 structTypeSpec :: Parser Type
-structTypeSpec = TStruct <$> (text "struct" *> structDetail)
+structTypeSpec = TStruct <$> (reserved "struct" *> structDetail)
 
 structDetail :: Parser StructDetail
-structDetail = bra "{" "}" body
+structDetail = braces body
     where body = StructDetail <$> many1 (declaration <* semi)
 
 unionTypeSpec :: Parser Type
-unionTypeSpec = TUnion <$> (text "union" *> unionDetail)
+unionTypeSpec = TUnion <$> (reserved "union" *> unionDetail)
 
 unionDetail :: Parser UnionDetail
-unionDetail = UnionDetail <$> switch <*> (text "{" *> caseStatements) <*> (deflt <* text "}")
+unionDetail = mkUnionDetail <$> switch <*> braces ((,) <$> caseStatements <*> deflt)
     where
-      switch         = text "switch" *> bra "(" ")" declaration
+      -- FIXME: we must be able to create this with a combinator
+      mkUnionDetail a (c, d) = UnionDetail a c d
+
+      switch         = reserved "switch" *> parens declaration
       caseStatements = many1 caseStatement
-      caseStatement  = (,) <$> bra "case" ":" constant <*> declaration <* semi
-      deflt          = optionMaybe (text "default" *> text ":" *> declaration <* semi)
+      caseStatement  = (,) <$> (reserved "case" *> constant <* colon) <*> declaration <* semi
+      deflt          = optionMaybe (reserved "default" *> colon *> declaration <* semi)
 
 declaration :: Parser Decl
 declaration =
-    choice [ pure DeclVoid <* text "void"
-           , try (mkString <$> (text "string" *> identifier) <*> bra "<" ">" (optionMaybe constant))
-           , (text "opaque" *> identifier) >>= mkOpaque
+    choice [ pure DeclVoid <* reserved "void"
+           , try (mkString <$> (reserved "string" *> identifier) <*> angles (optionMaybe constant))
+           , (reserved "opaque" *> identifier) >>= mkOpaque
            , typeSpec >>= mkBasicOrPointer
            ] <?> "declaration"
     where
       mkBasicOrPointer :: Type -> Parser Decl
-      mkBasicOrPointer t = choice [ mkPointer t <$> (text "*" *> identifier)
+      mkBasicOrPointer t = choice [ mkPointer t <$> (reservedOp "*" *> identifier)
                                   , identifier >>= mkBasic t
                                   ]
 
       mkBasic :: Type -> String -> Parser Decl
-      mkBasic t n = choice [ mkArray t n <$> bra "[" "]" constant
-                           , mkVarArray t n <$> bra "<" ">" (optionMaybe constant)
+      mkBasic t n = choice [ mkArray t n <$> squares constant
+                           , mkVarArray t n <$> angles (optionMaybe constant)
                            , pure (mkSimple t n)
                            ]
 
       mkOpaque :: String -> Parser Decl
-      mkOpaque n = choice [ mkFixedOpaque n <$> bra "[" "]" constant
-                          , mkVarOpaque n <$> bra "<" ">" (optionMaybe constant)
+      mkOpaque n = choice [ mkFixedOpaque n <$> squares constant
+                          , mkVarOpaque n <$> angles (optionMaybe constant)
                           ]
 
       mkSimple t n    = Decl n $ DeclSimple t
@@ -232,7 +222,7 @@ declaration =
 
 constantDef :: Parser ConstantDef
 constantDef = do
-  n <- bra "const" "=" identifier
+  n <- reserved "const" *> identifier <* reservedOp "="
   c <- constant
   mkConst n c
     where
@@ -260,14 +250,14 @@ constantDef = do
       insert name v table ctxt = setState $ ctxt { constTable = M.insert name v table }
 
 typeDef :: Parser Typedef
-typeDef = choice [ mkSimple <$> (text "typedef" *> declaration)
-                 , mkEnum   <$> (text "enum" *> identifier) <*> enumDetail
-                 , mkStruct <$> (text "struct" *> identifier) <*> structDetail
-                 , mkUnion  <$> (text "union" *> identifier) <*> unionDetail
+typeDef = choice [ mkSimple <$> (reserved "typedef" *> declaration)
+                 , mkEnum   <$> (reserved "enum" *> identifier) <*> enumDetail
+                 , mkStruct <$> (reserved "struct" *> identifier) <*> structDetail
+                 , mkUnion  <$> (reserved "union" *> identifier) <*> unionDetail
                  ] <?> "typedef"
     where
       mkSimple (Decl n di) = Typedef n $ DefSimple di
-      mkSimple _           = error "internal error"
+      mkSimple _           = error "internal error" -- FIXME: get rid of this
       mkEnum n             = Typedef n . DefEnum
       mkStruct n           = Typedef n . DefStruct
       mkUnion n            = Typedef n . DefUnion
@@ -276,6 +266,6 @@ definition :: Parser Definition
 definition = ((DefConstant <$> constantDef) <|> (DefTypedef <$> typeDef)) <* semi
 
 xdrParser :: Parser Specification
-xdrParser = Specification <$> (whitespace *> many definition <* eof)
+xdrParser = Specification <$> (whiteSpace *> many definition <* eof)
 
 ----------------------------------------------------------------
