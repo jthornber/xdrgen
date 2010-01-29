@@ -1,8 +1,12 @@
-* Tasks [/]
+* Tasks [1/3]
 
 - [ ] Try using StringTemplate to generate the code
 
-- [ ] Use Parsec.Token for the Lexer, rather than rolling my own combinators.
+  Having trouble installing template-haskell 2.4.0 with ghc 10.4
+  (which HStringTemplate depends on).  Maybe wait until ghc 6.12
+  platform is ready ?
+
+- [X] Use Parsec.Token for the Lexer, rather than rolling my own combinators.
 
 - [ ] Stop evaluating constants as part of the parse
 
