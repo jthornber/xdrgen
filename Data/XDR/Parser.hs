@@ -92,14 +92,12 @@ discard :: Parser a -> Parser ()
 discard = (>> return ())
 
 intConstant :: Parser Integer
-intConstant = do
-  ((identifier >>= check) <|> integer) <?> "constant"
+intConstant = ((identifier >>= check) <|> integer) <?> "constant"
     where
-      check name = do
-                ctxt <- getState
-                case M.lookup name (constTable ctxt) of
-                  Nothing -> unexpected $ "undefined constant reference: " ++ name
-                  Just x -> pure x
+      check name = getState >>= \ctxt ->
+        case M.lookup name (constTable ctxt) of
+          Nothing -> unexpected $ "undefined constant reference: " ++ name
+          Just x -> pure x
 
 constExpr :: Parser Integer
 constExpr = buildExpressionParser table term
@@ -115,8 +113,9 @@ constExpr = buildExpressionParser table term
                 ]
               ]
 
-      prefix name fun = Prefix (do { reservedOp name; return fun })
-      binary name fun assoc = Infix (do { reservedOp name; return fun }) assoc
+      prefix name fun = Prefix (mkOp name fun)
+      binary name fun assoc = Infix (mkOp name fun) assoc
+      mkOp name fun = reservedOp name *> pure fun
 
       term = parens constExpr <|> intConstant 
 
@@ -221,10 +220,7 @@ declaration =
       mkPointer t n   = Decl n $ DeclPointer t
 
 constantDef :: Parser ConstantDef
-constantDef = do
-  n <- reserved "const" *> identifier <* reservedOp "="
-  c <- constant
-  mkConst n c
+constantDef = ((,) <$> (reserved "const" *> identifier <* reservedOp "=") <*> constant) >>= uncurry mkConst
     where
       mkConst name c@(ConstLit v) = do
         ctxt <- getState
