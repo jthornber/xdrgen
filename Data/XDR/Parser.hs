@@ -6,6 +6,8 @@ module Data.XDR.Parser
 
 import Control.Applicative hiding (many, (<|>))
 import Control.Monad
+import Data.ByteString (ByteString)
+import qualified Data.ByteString as B
 import Data.List
 import Data.Map (Map)
 import qualified Data.Map as M
@@ -14,8 +16,7 @@ import Data.Set (Set)
 import qualified Data.Set as S
 
 import Text.Parsec hiding (ParseError)
--- FIXME: convert to ByteString
-import Text.Parsec.String hiding (Parser)
+import Text.Parsec.ByteString hiding (Parser)
 import Text.Parsec.Token (makeTokenParser, GenLanguageDef (..))
 import qualified Text.Parsec.Token as T
 import Text.Parsec.Expr
@@ -66,7 +67,7 @@ data ParseError = ParseError String
 instance Show ParseError where
     show (ParseError str) = str
 
-parseString :: [(String, Integer)] -> String -> String -> Either [ParseError] Specification
+parseString :: [(String, Integer)] -> ByteString -> String -> Either [ParseError] Specification
 parseString defines txt source =
     case runParser xdrParser (initContext defines) source txt of
       Left err -> Left [ParseError . show $ err]
@@ -74,7 +75,7 @@ parseString defines txt source =
 
 parseFile :: [(String, Integer)] -> FilePath -> IO (Either [ParseError] Specification)
 parseFile defines path = do
-  input <- readFile path
+  input <- B.readFile path
   return $ parseString defines input path
 
 data Context = Context { constTable :: Map String Integer

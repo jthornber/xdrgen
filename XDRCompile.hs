@@ -1,6 +1,7 @@
 module Main where
 
 import Control.Applicative
+import qualified Data.ByteString as B
 import System.Console.GetOpt
 import System.Environment
 import System.Exit
@@ -21,7 +22,7 @@ import Data.XDR.PrettyPrintC
 
 main :: IO ()
 main = do
-  txt <- getContents
+  txt <- B.getContents
   putStrLn $ case parseString [] txt "" of
                Left errs  -> unlines . map show $ errs
                Right spec -> ppXDR $ spec
