@@ -176,12 +176,13 @@ structDetail = braces body
 unionTypeSpec :: Parser Type
 unionTypeSpec = TUnion <$> (reserved "union" *> unionDetail)
 
-unionDetail :: Parser UnionDetail
-unionDetail = mkUnionDetail <$> switch <*> braces ((,) <$> caseStatements <*> deflt)
-    where
-      -- FIXME: we must be able to create this with a combinator
-      mkUnionDetail a (c, d) = UnionDetail a c d
+infixl 4 <*-*>
+(<*-*>) :: (Applicative f) => f (a -> b -> c) -> f (a, b) -> f c
+(<*-*>) fn fab = uncurry <$> fn <*> fab
 
+unionDetail :: Parser UnionDetail
+unionDetail = UnionDetail <$> switch <*-*> braces ((,) <$> caseStatements <*> deflt)
+    where
       switch         = reserved "switch" *> parens declaration
       caseStatements = many1 caseStatement
       caseStatement  = (,) <$> (reserved "case" *> constant <* colon) <*> declaration <* semi
