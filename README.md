@@ -1,15 +1,15 @@
-* Status
+Status
+======
 
 This project is not mature enough for general use yet.  Initially I'm
 aiming to provide generators for Haskell and C, Ruby will probably
 follow at some point.
 
-* Introduction
+Introduction
+============
 
 XDR is a little language to specify binary formats.  The full
-specification can be found here.
-
-http://www.faqs.org/rfcs/rfc1832.html
+specification can be found [here](http://www.faqs.org/rfcs/rfc1832.html).
 
 Confusingly, the language has a lot of similarity with the C syntax
 for data types.  However the two serve very different purposes.  Make
@@ -29,7 +29,8 @@ I've found in the past that a tool like this can make it trivial to
 write code for network protocols, storing data on disk, transfering
 data between languages etc.
 
-* A little rant
+A little rant
+=============
 
 I'm a big believer in having explicitly specified protocols between
 components in large systems.
