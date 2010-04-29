@@ -1,0 +1,128 @@
+Group RPCHeader;
+
+guardName(g) ::= "XDR_RPC_<g>_H"
+
+compileGuard(body, g) ::= <<
+#ifndef <guardName(g)>
+#define <guardName(g)>
+
+<body>
+
+#endif
+>>
+
+typeMap ::= [
+        "TInt"       : "int32_t",
+        "TUInt"      : "uint32_t",
+        "THyper"     : "int64_t",
+        "TUHyper"    : "uint64_t",
+        "TFloat"     : "float",
+        "TDouble"    : "double",
+        "TQuadruple" : "quadruple",
+        "TBool"      : "int"   // is bool in the C standard yet ?
+]
+
+enumPair(p) ::= "<p.0> = <p.1>"
+
+enumDetail(ed) ::= <<
+enum {
+	<ed.0:enumPair(); separator = ",\n">
+}
+>>
+
+decl(d) ::= "<declInternal(d.1)> <d.0>"
+
+structDetail(sd) ::= <<
+struct {
+	<sd.0:decl(); separator = ';\n'>
+}
+>>
+
+unionCase(c) ::= "<decl(c.1)>"
+
+unionDetail(ud) ::= <<
+struct {
+	<decl(ud.0)>;
+        union {
+		<ud.1:unionCase; separator = ";\n">
+<if (ud.2)>
+	default:
+		<decl(ud.2)>
+	} u;
+}
+>>
+
+type(t) ::= <<
+<if (t.isTEnum)>
+	<enumDetail(t.0)>
+<elseif (t.isTStruct)>
+	<structDetail(t.0)>
+<elseif (t.isTUnion)>
+	<unionDetail(t.0)>
+<elseif (t.isTTypedef)>
+	<t.0>
+<else>
+	<typeMap.(t)>
+<endif>
+>>
+
+// FIXME: arrays are ugly because the type wraps the name
+array(t, c, n) ::= "<type(t)> <n>[<c.0>]"
+varArray(t, c, n) ::= "<type(t)) *<n>"
+opaque(c, n) ::= "char n[<c.0>]"
+varOpaque(c, n) ::= "unsigned char *n"
+string(c, n) ::= "char *<n>"
+pointer(t) ::= "<type(t)> *"
+
+declInternal(di) :: <<
+<if (di.isDeclSimple)>
+	<type(di.0)>
+<elseif (di.isDeclArray)>
+	<array(di.0, di.1)>
+<elseif (di.isVarDeclArray)>
+	<varArray(di.0, di.1)>
+<elseif (di.isDeclOpaque)>
+	<opaque(di.0)>
+<elseif (di.isDeclVarOpaque)>
+	<varOpaque(di.0)>
+<elseif (di.isDeclString)>
+	<string(di.0)>
+<elseif (di.isPointer)>
+	<pointer(di.0)>
+<endif>
+>>
+
+defTypedef(name, tdInternal) ::= <<
+typedef
+<if (tdInternal.isDefSimple)>
+	<declInternal(tdInternal.0)>
+<elseif (tdInternal.isDefEnum)>
+	<enumDetail(tdInternal.0)>
+<elseif (tdInternal.isDefStruct)>
+	<structDetail(tdInternal.0)>
+<elseif (tdInternal.isDefUnion)>
+	<unionDetail(tdInternal.0)>
+<endif>
+ name;
+>>
+
+defConstant(name, const) ::= <<
+#define <name> <const.0>
+>>
+
+declareDef(def) ::= <<
+<if (isDefTypedef)>
+	<defTypedef(def)>
+<elseif (isDefConstant)>
+	<defConstant(name = def.0, const = def.1)>
+<endif>
+>>
+
+declarations(specification) ::= <<
+	<ast.0:declareDef>
+>>
+
+// Entry point
+header(ast, digest) ::= <<
+<compileGuard(declarations(ast), digest)>
+>>
