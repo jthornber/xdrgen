@@ -132,7 +132,7 @@ typeSpec = choice [ try (reserved "unsigned" *> (simpleType "int" TUInt <|> simp
                   , simpleType "hyper" THyper
                   , simpleType "float" TFloat
                   , simpleType "double" TDouble
-                  , simpleType "quad" TQuad
+                  , simpleType "quadruple" TQuadruple
                   , simpleType "bool" TBool
                   , try enumTypeSpec
                   , try structTypeSpec

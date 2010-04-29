@@ -32,8 +32,8 @@ md5 = text . show . MD5.md5 . B.pack . map (fromIntegral . ord)
 block :: [String] -> Doc
 block = foldr ((<$>) . text) empty
 
-ppCHeader :: Specification -> String
-ppCHeader spec = show $ header <--> ppSpec spec <--> ppFuncs spec <--> footer
+ppCHeader :: Maybe FilePath -> Specification -> String
+ppCHeader _ spec = show $ header <--> ppSpec spec <--> ppFuncs spec <--> footer
     where
       header = vcat [ text "#ifndef" <+> compileGuard
                     , text "#define" <+> compileGuard
@@ -90,7 +90,7 @@ ppCHeader spec = show $ header <--> ppSpec spec <--> ppFuncs spec <--> footer
       ppType TUHyper = text "uint64_t"
       ppType TFloat = text "float"
       ppType TDouble = text "double"
-      ppType TQuad = text "long double"
+      ppType TQuadruple = text "long double"
       ppType TBool = text "int32_t"
       ppType (TEnum ed) = text "enum" <+> ppEnumDetail ed
       ppType (TStruct sd) = text "struct" <+> ppStructDetail sd
@@ -107,7 +107,8 @@ ppCHeader spec = show $ header <--> ppSpec spec <--> ppFuncs spec <--> footer
                              " *x, void **data, size_t *len, struct xdr_thunk *release);") <$>
                        text (n ++ " *XDR_unpack_" ++ n ++ "(struct unpacker *u, struct xdr_thunk *release);")
 
-ppCImpl spec = show $ foldr (<-->) empty [cIncludes, poolCode, packerCode, unpackerCode, basicTypeMarshalling]
+ppCImpl :: Maybe FilePath -> Specification -> String
+ppCImpl _ spec = show $ foldr (<-->) empty [cIncludes, poolCode, packerCode, unpackerCode, basicTypeMarshalling]
 
 (<-->) :: Doc -> Doc -> Doc
 b <--> e = vcat [ b
@@ -227,7 +228,7 @@ poolCode =
           , ""
           , "static inline void *pool_alloc_big(struct pool *mem, size_t len)"
           , "{"
-          , "        struct chunk *c = new_chunk(mem, len);"
+          , "        struct chunk *c = new_chunk(len);"
           , "        if (c) {"
           , "                /*"
           , "                 * Put the new chunk after the head of the list, so we"
@@ -243,7 +244,6 @@ poolCode =
           , ""
           , "static inline void *pool_alloc_simple(struct pool *mem, size_t len)"
           , "{"
-          , "        void *ptr;"
           , "        struct chunk *c = mem->chunks;"
           , "        if (c->free < len) {"
           , "                c = new_chunk(mem->chunk_size);"
@@ -275,7 +275,7 @@ packerCode =
           , "        void *current;"
           , "};"
           , ""
-          , "static void struct packer *packer_create(size_t packed_size_hint)"
+          , "static struct packer *packer_create(size_t packed_size_hint)"
           , "{"
           , "        struct packer *p = malloc(sizeof(*p));"
           , ""
@@ -311,7 +311,7 @@ packerCode =
           , "        if (p->allocated - p->written < len) {"
           , "                void *new_data;"
           , ""
-          , "                new_data = realloc(p->allocated * 2);"
+          , "                new_data = realloc(p->data, p->allocated * 2);"
           , "                if (!new_data)"
           , "                        return 0;"
           , ""
@@ -361,7 +361,7 @@ unpackerCode = block [ "struct unpacker {"
                      , ""
                      , "static void unpacker_destroy(struct unpacker *u)"
                      , "{"
-                     , "        pool_destroy(u);"
+                     , "        pool_destroy(u->mem);"
                      , "        free(u);"
                      , "}"
                      , ""
@@ -392,7 +392,7 @@ basicTypeMarshalling =
           , "static int pack_uint(struct packer *p, uint32_t x)"
           , "{"
           , "        uint32_t packed = htonl(x);"
-          , "        packer_write(&packed, sizeof(packed));"
+          , "        packer_write(p, &packed, sizeof(packed));"
           , "        return 1;"
           , "}"
           , ""
@@ -430,7 +430,7 @@ basicTypeMarshalling =
           , "                return 0;"
           , ""
           , "        *x = hi;"
-          , "        *x << 32;"
+          , "        *x <<= 32;"
           , "        *x |= lo;"
           , "        return 1;"
           , "}"
@@ -443,15 +443,15 @@ basicTypeMarshalling =
           , ""
           , "static int pack_float(struct packer *p, float x)"
           , "{"
-          , "        struct float_cast fc;"
+          , "        union float_cast fc;"
           , "        fc.f = x;"
           , "        return pack_uint(p, fc.u);"
           , "}"
           , ""
           , "static int unpack_float(struct unpacker *u, float *x)"
           , "{"
-          , "        struct float_cast fc;"
-          , "        if (!unpack_uint(p, &fc.u))"
+          , "        union float_cast fc;"
+          , "        if (!unpack_uint(u, &fc.u))"
           , "                return 0;"
           , ""
           , "        *x = fc.f;"
@@ -465,15 +465,15 @@ basicTypeMarshalling =
           , ""
           , "static int pack_double(struct packer *p, double x)"
           , "{"
-          , "        struct double_cast fc;"
+          , "        union double_cast fc;"
           , "        fc.f = x;"
           , "        return pack_uhyper(p, fc.u);"
           , "}"
           , ""
           , "static int unpack_double(struct unpacker *u, double *x)"
           , "{"
-          , "        struct float_cast fc;"
-          , "        if (!unpack_uhyper(p, &fc.u))"
+          , "        union float_cast fc;"
+          , "        if (!unpack_uhyper(u, &fc.u))"
           , "                return 0;"
           , ""
           , "        *x = fc.f;"

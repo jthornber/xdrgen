@@ -18,11 +18,11 @@ ppOptional fn (Just a) = fn a
 braces :: [Doc] -> Doc
 braces ds = nest indent (lbrace <$> vcat ds) <$> rbrace
 
-ppXDR :: Specification -> String
-ppXDR = show . ppSpec
+ppXDR :: Maybe FilePath -> Specification -> String
+ppXDR _ = show . ppSpec
 
 
-ppSpec :: Specification -> Doc        
+ppSpec :: Specification -> Doc
 ppSpec (Specification defs) = vcat . punctuate linebreak . map ppDef $ defs
 
 ppDef :: Definition -> Doc
@@ -80,7 +80,7 @@ ppType THyper = text "hyper"
 ppType TUHyper = text "unsigned hyper"
 ppType TFloat = text "float"
 ppType TDouble = text "double"
-ppType TQuad = text "quad"
+ppType TQuadruple = text "quadruple"
 ppType TBool = text "bool"
 ppType (TEnum ed) = text "enum" <+> ppEnumDetail ed
 ppType (TStruct sd) = text "struct" <+> ppStructDetail sd

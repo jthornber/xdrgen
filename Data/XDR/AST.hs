@@ -40,7 +40,7 @@ data Type = TInt
           | TUHyper
           | TFloat
           | TDouble
-          | TQuad
+          | TQuadruple
           | TBool
           | TEnum EnumDetail
           | TStruct StructDetail

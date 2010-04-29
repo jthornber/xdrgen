@@ -1,5 +1,5 @@
 Name:           xdrgen
-Version:        0.0
+Version:        0.1
 Cabal-Version:  >= 1.2
 License:        GPL
 License-File:   LICENSE
@@ -10,9 +10,9 @@ Synopsis:       XDR utilities
 Build-Type:     Simple
 
 Executable XDRCompile
-  Build-Depends: base >= 4.1.0.0, parsec >= 3, syb, containers, wl-pprint, typehash, pureMD5, bytestring
+  Build-Depends: base >= 4.0, parsec >= 3, syb, containers, wl-pprint, typehash, pureMD5, bytestring, filepath
   Main-Is: XDRCompile.hs
 
 Library
-  Build-Depends:     base >= 4.1.0.0, parsec >= 3, syb, containers, wl-pprint, typehash, pureMD5, bytestring
+  Build-Depends:     base >= 4.0, parsec >= 3, syb, containers, wl-pprint, typehash, pureMD5, bytestring, filepath
   Exposed-modules:   Data.XDR.AST, Data.XDR.Parser, Data.XDR.PrettyPrinter, Data.XDR.PrettyPrintC
