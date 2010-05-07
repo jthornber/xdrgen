@@ -9,6 +9,7 @@ import qualified Data.Digest.Pure.MD5 as MD5
 import Data.Maybe
 import Data.TypeHash
 import Data.XDR.AST
+import Data.XDR.PPUtils
 import System.Path
 import Text.PrettyPrint.Leijen as PP hiding (semiBraces, braces, indent)
 
@@ -49,9 +50,7 @@ ppCHeader _ spec = show $ header <--> ppSpec spec <--> ppFuncs spec <--> footer
       ppDef (DefConstant cd) = ppConstDef cd
       ppDef (DefTypedef td) = ppTypedef td
 
-      ppConstDef (ConstantDef n c) = text "#define" <+> text n <+> ppConstant c
-
-      ppConstant (ConstLit n) = text . show $ n
+      ppConstDef (ConstantDef n c) = text "#define" <+> text n <+> ppConstExpr c
 
       ppTypedef (Typedef n ti) = text "typedef" <+> ppTypedefInternal n ti <> semi
 
@@ -61,7 +60,7 @@ ppCHeader _ spec = show $ header <--> ppSpec spec <--> ppFuncs spec <--> footer
       ppTypedefInternal n (DefUnion ud) = text "struct" <+> ppUnionDetail ud <+> text n
 
       ppEnumDetail (EnumDetail xs) = braces . punctuate comma . map ppEnumDef $ xs
-      ppEnumDef (n, c) = text n <+> text "=" <+> ppConstant c
+      ppEnumDef (n, c) = text n <+> text "=" <+> ppConstPrim c
 
       ppStructDetail (StructDetail decls) = semiBraces . map ppDecl $ decls
 
@@ -73,9 +72,9 @@ ppCHeader _ spec = show $ header <--> ppSpec spec <--> ppFuncs spec <--> footer
                  ]
 
       ppDecl (Decl n (DeclSimple t)) = ppType t <+> text n
-      ppDecl (Decl n (DeclArray t c)) = ppType t <+> text n <> (brackets . ppConstant $ c)
+      ppDecl (Decl n (DeclArray t c)) = ppType t <+> text n <> (brackets . ppConstExpr $ c)
       ppDecl (Decl n (DeclVarArray t mc)) = ppVarStruct n t
-      ppDecl (Decl n (DeclOpaque c)) = text "opaque" <+> text n <> (brackets . ppConstant $ c)
+      ppDecl (Decl n (DeclOpaque c)) = text "opaque" <+> text n <> (brackets . ppConstExpr $ c)
       ppDecl (Decl n (DeclVarOpaque mc)) = ppVarStruct n (TTypedef "void")
       ppDecl (Decl n (DeclString mc)) = text "char *" <> text n
       ppDecl (Decl n (DeclPointer t)) = ppType t <> text "*" <+> text n

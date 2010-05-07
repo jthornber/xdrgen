@@ -42,8 +42,8 @@ ppTypedefInternal n (DefUnion ud) = text "union" <+> ppUnionDetail ud <+> text n
 ppEnumDetail :: EnumDetail -> Doc
 ppEnumDetail (EnumDetail xs) = braces . punctuate comma . map (uncurry ppEnumDef) $ xs
 
-ppEnumDef :: String -> Constant -> Doc
-ppEnumDef n c = text n <+> text "=" <+> ppConstant c
+ppEnumDef :: String -> ConstPrim -> Doc
+ppEnumDef n c = text n <+> text "=" <+> ppConstPrim c
 
 ppStructDetail :: StructDetail -> Doc
 ppStructDetail (StructDetail decls) = braces . map ((<> semi) . ppDecl) $ decls
@@ -56,12 +56,13 @@ ppUnionDetail (UnionDetail selector cases mDefault) =
                   , [rbrace]
                   ]
 
-ppCase (c, d) = nest indent (ppConstant c <> colon <$> ppDecl d <> semi)
+ppCase (c, d) = nest indent (ppConstPrim c <> colon <$> ppDecl d <> semi)
 ppDflt d = ppOptional (\d -> nest indent (text "default:" <$> ppDecl d)) d
 
 ppConstdef (ConstantDef n c) = text "const" <+> text n <+> text "=" <+> ppConstant c <> semi
 
-ppConstant (ConstLit n) = text . show $ n
+ppConstant c = text . show . evalConstExpr $ c
+ppConstPrim c = text . show . evalConstPrim $ c
 
 ppDecl (Decl n (DeclSimple t)) = ppType t <+> text n
 ppDecl (Decl n (DeclArray t c)) = ppType t <+> text n <> (brackets . ppConstant $ c)
@@ -72,7 +73,7 @@ ppDecl (Decl n (DeclString mc)) = text "string" <+> text n <> ppVarSize mc
 ppDecl (Decl n (DeclPointer t)) = ppType t <> text "*" <+> text n
 ppDecl DeclVoid = text "void"
 
-ppVarSize :: Maybe Constant -> Doc
+ppVarSize :: Maybe ConstExpr -> Doc
 ppVarSize = angles . ppOptional ppConstant
 
 ppType TInt = text "int"

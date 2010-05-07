@@ -6,6 +6,7 @@ import Control.Monad
 import Data.Char
 import Data.Maybe
 import Data.XDR.AST
+import Data.XDR.PPUtils
 import System.Path hiding ((</>))
 import Text.PrettyPrint.Leijen as PP hiding (semiBraces, braces, indent)
 
@@ -52,14 +53,9 @@ maybeSemiBraces =
     semiBraces . catMaybes
 
 -- XDR
-
-ppConstant :: Constant -> Doc
-ppConstant (ConstLit n) =
-    text . show $ n
-
-ppDefaultConstant :: Doc -> Maybe Constant -> Doc
+ppDefaultConstant :: Doc -> Maybe ConstExpr -> Doc
 ppDefaultConstant d =
-    maybe d ppConstant
+    maybe d ppConstExpr
 
 ppSizeOf :: Type -> Doc
 ppSizeOf t =
@@ -140,16 +136,16 @@ ppCallType xdrs ptr t =
              <> tupled [text xdrs,
                         text ptr]
 
-ppCallVector :: String -> String -> Constant -> Type -> Doc
+ppCallVector :: String -> String -> ConstExpr -> Type -> Doc
 ppCallVector xdrs ptr c t =
     text "xdr_vector"
              <> tupled [text xdrs,
                         text ("(char *)" ++ ptr),
-                        ppConstant c,
+                        ppConstExpr c,
                         ppSizeOf t,
                         text "(xdrproc_t)xdr_" <> ppType t]
 
-ppCallArray :: String -> String -> String -> Maybe Constant -> Type -> Doc
+ppCallArray :: String -> String -> String -> Maybe ConstExpr -> Type -> Doc
 ppCallArray xdrs ptr len mc t =
     text "xdr_array"
              <> tupled [text xdrs,
@@ -159,14 +155,14 @@ ppCallArray xdrs ptr len mc t =
                         ppSizeOf t,
                         text "(xdrproc_t)xdr_" <> ppType t]
 
-ppCallOpaque :: String -> String -> Constant -> Doc
+ppCallOpaque :: String -> String -> ConstExpr -> Doc
 ppCallOpaque xdrs ptr c =
     text "xdr_opaque"
              <> tupled [text xdrs,
                         text ptr,
-                        ppConstant c]
+                        ppConstExpr c]
 
-ppCallBytes :: String -> String -> String -> Maybe Constant -> Doc
+ppCallBytes :: String -> String -> String -> Maybe ConstExpr -> Doc
 ppCallBytes xdrs ptr len mc =
     text "xdr_bytes"
              <> tupled [text xdrs,
@@ -174,7 +170,7 @@ ppCallBytes xdrs ptr len mc =
                         text ("(u_int *)" ++ len),
                         ppDefaultConstant (text "~0") mc]
 
-ppCallString :: String -> String -> Maybe Constant -> Doc
+ppCallString :: String -> String -> Maybe ConstExpr -> Doc
 ppCallString xdrs ptr mc =
     text "xdr_string"
              <> tupled [text xdrs,
@@ -189,11 +185,11 @@ ppCallPointer xdrs ptr t =
                         ppSizeOf t,
                         text "(xdrproc_t)xdr_" <> ppType t]
 
-ppEnumBody :: [(String, Constant)] -> Doc
+ppEnumBody :: [(String, ConstPrim)] -> Doc
 ppEnumBody =
     braces . punctuate comma . map ppEnumDef
   where
-    ppEnumDef (n, c) = text n <+> text "=" <+> ppConstant c
+    ppEnumDef (n, c) = text n <+> text "=" <+> ppConstPrim c
 
 ppStructBody :: [Decl] -> Doc
 ppStructBody =
@@ -203,11 +199,11 @@ ppMaybeDecl :: Decl -> Maybe Doc
 ppMaybeDecl (Decl n (DeclSimple t)) =
     Just $ ppType t <+> text n
 ppMaybeDecl (Decl n (DeclArray t c)) =
-    Just $ ppType t <+> text n <> (brackets . ppConstant $ c)
+    Just $ ppType t <+> text n <> (brackets . ppConstExpr $ c)
 ppMaybeDecl (Decl n (DeclVarArray t mc)) =
     Just $ ppVarStruct n t
 ppMaybeDecl (Decl n (DeclOpaque c)) =
-    Just $ text "char" <+> text n <> (brackets . ppConstant $ c)
+    Just $ text "char" <+> text n <> (brackets . ppConstExpr $ c)
 ppMaybeDecl (Decl n (DeclVarOpaque mc)) =
     Just $ ppVarStruct n (TTypedef "char")
 ppMaybeDecl (Decl n (DeclString mc)) =
@@ -262,7 +258,7 @@ ppRpcHeader file spec =
     ppDef (DefTypedef td) = ppTypedef td <> semi
 
     ppConstDef (ConstantDef n c) =
-        text "#define" <+> text n <+> ppConstant c
+        text "#define" <+> text n <+> ppConstExpr c
 
     ppTypedef (Typedef n ti) =
         text "typedef" <+> ppTypedefInternal n ti
@@ -393,7 +389,7 @@ ppRpcSource file spec = show $ ppInclude file <$> ppSpec spec
     ppSwitchCase (c, d) =
         enclose l r $ ppSwitchCall d
       where
-        l = text "case" <+> ppConstant c <> colon
+        l = text "case" <+> ppConstPrim c <> colon
         r = line <> text "break"
 
     ppSwitchDefault =
