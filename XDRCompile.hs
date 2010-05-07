@@ -31,11 +31,11 @@ header = "usage: xdrgen [option...] <file...>"
 
 options :: [OptDescr (Opts -> Opts)]
 options = [
- Option ['f'] ["format"] (ReqArg (\s o -> o {optFormat = s}) "FORMAT")
+ Option "f" ["format"] (ReqArg (\s o -> o {optFormat = s}) "FORMAT")
             "print format",
- Option ['h'] ["header"] (NoArg (\o -> o {optHeader = True}))
+ Option "h" ["header"] (NoArg (\o -> o {optHeader = True}))
             "header file",
- Option ['c'] ["source"] (NoArg (\o -> o {optSource = True}))
+ Option "c" ["source"] (NoArg (\o -> o {optSource = True}))
             "source file"]
 
 usage = usageInfo header options
@@ -70,8 +70,7 @@ getPrinter name = find ((==name) . ppFormat) printers
 showResult :: Opts -> Maybe AbsFile -> Either [ParseError] Specification -> IO ()
 showResult opts file (Left errs) = die (unlines . map show $ errs)
 
-showResult opts file (Right spec) = do
-    maybe err f (getPrinter name)
+showResult opts file (Right spec) = maybe err f (getPrinter name)
   where
     err = die $ "invalid format `" ++ name ++ "'\n" ++ usage
     f p = do
@@ -110,8 +109,7 @@ processFiles opts [] = do
   txt <- B.getContents
   let ast = parseString defines txt "<stdin>"
   showResult opts Nothing ast
-processFiles opts files = do
-    forM_ files (processFile opts)
+processFiles opts files = forM_ files (processFile opts)
 
 main :: IO ()
 main = do

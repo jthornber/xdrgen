@@ -6,6 +6,7 @@ module Data.XDR.Parser
     ) where
 
 import Control.Applicative hiding (many, (<|>))
+import Control.Arrow
 import Control.Monad
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
@@ -28,7 +29,7 @@ import Data.XDR.PathUtils
 
 ----------------------------------------------------------------
 -- Lexer
-l = makeTokenParser $
+l = makeTokenParser
     LanguageDef { commentStart = "/*"
                 , commentEnd = "*/"
                 , commentLine = "//"
@@ -113,50 +114,46 @@ parseImportSpecification defines includes path = do
             Left errs -> return $ Left errs
             Right ispec -> return $ Right (M.insert im' ispec)
       
-data Context = Context { constTable :: Map String Integer
+data Context = Context { constTable :: Map String ConstPrim
                        , nextEnum :: Integer
                        }
 
 initContext :: [(String, Integer)] -> Context
-initContext defines = Context (M.fromList defines) 0
+initContext defines = Context (M.fromList . map (second ConstLit) $ defines) 0
 
 type Parser = GenParser Char Context
 
 ----------------------------------------------------------------
 
-discard :: Parser a -> Parser ()
-discard = (>> return ())
-
-intConstant :: Parser Integer
-intConstant = ((identifier >>= check) <|> integer) <?> "constant"
-    where
-      check name = getState >>= \ctxt ->
-        case M.lookup name (constTable ctxt) of
-          Nothing -> unexpected $ "undefined constant reference: " ++ name
-          Just x -> pure x
-
-constExpr :: Parser Integer
+constPrim :: Parser ConstPrim
+constPrim = (ConstLit <$> integer) <|> (findReference =<< identifier)
+  where
+    findReference :: String -> Parser ConstPrim
+    findReference n = do
+      c <- getState
+      case M.lookup n (constTable c) of
+        Nothing -> unexpected $ "unknown constant '" ++ n ++ "'"
+        Just p -> return p
+  
+constExpr :: Parser ConstExpr
 constExpr = buildExpressionParser table term
     where
-      table = [ [ prefix "-" negate
+      table = [ [ prefix "-" (CEUnExpr NEGATE)
                 , prefix "+" id
                 ]
-              , [ binary "*" (*) AssocLeft
-                , binary "/" div AssocLeft
+              , [ binary "*" (CEBinExpr MULT) AssocLeft
+                , binary "/" (CEBinExpr DIV) AssocLeft
                 ]
-              , [ binary "+" (+) AssocLeft
-                , binary "-" (-) AssocLeft
+              , [ binary "+" (CEBinExpr PLUS) AssocLeft
+                , binary "-" (CEBinExpr MINUS) AssocLeft
                 ]
               ]
 
       prefix name fun = Prefix (mkOp name fun)
-      binary name fun assoc = Infix (mkOp name fun) assoc
+      binary name fun = Infix (mkOp name fun)
       mkOp name fun = reservedOp name *> pure fun
 
-      term = parens constExpr <|> intConstant 
-
-constant :: Parser Constant
-constant = ConstLit <$> constExpr
+      term = (CEPrim <$> constPrim) <|> parens constExpr
 
 simpleType :: String -> Type -> Parser Type
 simpleType keyword t = const t <$> try (reserved keyword)
@@ -182,7 +179,7 @@ enumDetail :: Parser EnumDetail
 enumDetail = setNextEnum 0 *> braces body
     where
       body = EnumDetail <$> commaSep pair
-      pair = ((,) <$> identifier <*> optionMaybe (reservedOp "=" *> constant)) >>= uncurry mkElem
+      pair = ((,) <$> identifier <*> optionMaybe (reservedOp "=" *> constPrim)) >>= uncurry mkElem
 
       setNextEnum n = do
         ctxt <- getState
@@ -194,13 +191,14 @@ enumDetail = setNextEnum 0 *> braces body
         setState $ ctxt { nextEnum = succ v }
         return v
 
-      mkElem n Nothing = incNextEnum >>= insertConst n
-      mkElem n (Just (ConstLit v)) = (setNextEnum $ v + 1) *> insertConst n v
+      mkElem n Nothing = incNextEnum >>= insertConst n . ConstLit
+      mkElem n (Just e) = 
+        let v = evalConstPrim e in (setNextEnum v + 1) *> insertConst n (ConstEnumRef n e)
 
       insertConst n v = do
         ctxt <- getState
         setState $ ctxt { constTable = M.insert n v (constTable ctxt) }
-        pure (n, ConstLit v)
+        pure (n, v)
 
 structTypeSpec :: Parser Type
 structTypeSpec = TStruct <$> (reserved "struct" *> structDetail)
@@ -221,13 +219,13 @@ unionDetail = UnionDetail <$> switch <*-*> braces ((,) <$> caseStatements <*> de
     where
       switch         = reserved "switch" *> parens declaration
       caseStatements = many1 caseStatement
-      caseStatement  = (,) <$> (reserved "case" *> constant <* colon) <*> declaration <* semi
+      caseStatement  = (,) <$> (reserved "case" *> constPrim <* colon) <*> declaration <* semi
       deflt          = optionMaybe (reserved "default" *> colon *> declaration <* semi)
 
 declaration :: Parser Decl
 declaration =
     choice [ pure DeclVoid <* reserved "void"
-           , try (mkString <$> (reserved "string" *> identifier) <*> angles (optionMaybe constant))
+           , try (mkString <$> (reserved "string" *> identifier) <*> angles (optionMaybe constExpr))
            , (reserved "opaque" *> identifier) >>= mkOpaque
            , typeSpec >>= mkBasicOrPointer
            ] <?> "declaration"
@@ -238,14 +236,14 @@ declaration =
                                   ]
 
       mkBasic :: Type -> String -> Parser Decl
-      mkBasic t n = choice [ mkArray t n <$> squares constant
-                           , mkVarArray t n <$> angles (optionMaybe constant)
+      mkBasic t n = choice [ mkArray t n <$> squares constExpr
+                           , mkVarArray t n <$> angles (optionMaybe constExpr)
                            , pure (mkSimple t n)
                            ]
 
       mkOpaque :: String -> Parser Decl
-      mkOpaque n = choice [ mkFixedOpaque n <$> squares constant
-                          , mkVarOpaque n <$> angles (optionMaybe constant)
+      mkOpaque n = choice [ mkFixedOpaque n <$> squares constExpr
+                          , mkVarOpaque n <$> angles (optionMaybe constExpr)
                           ]
 
       mkSimple t n    = Decl n $ DeclSimple t
@@ -257,28 +255,21 @@ declaration =
       mkPointer t n   = Decl n $ DeclPointer t
 
 constantDef :: Parser ConstantDef
-constantDef = ((,) <$> (reserved "const" *> identifier <* reservedOp "=") <*> constant) >>= uncurry mkConst
+constantDef = ((,) <$> (reserved "const" *> identifier <* reservedOp "=") <*> constExpr) >>= uncurry mkConst
     where
-      mkConst name c@(ConstLit v) = do
+      mkConst name e = do
         ctxt <- getState
         let table = constTable ctxt
 
         -- maybe the constant has already been defined ?  We only
         -- complain if they're trying to give it a different value.
         case M.lookup name table of
-          Nothing -> insert name v table ctxt
-          Just v' -> if v /= v'
-                     then fail . concat $ [ "multiple, differing, definitions for "
-                                          , name
-                                          , " ("
-                                          , show v
-                                          , " != "
-                                          , show v'
-                                          , ")"
-                                          ]
-                     else insert name v table ctxt
+          Nothing -> insert name (ConstDefRef (ConstantDef name e)) table ctxt
+          Just v' -> unexpected . concat $ [ "multiple definitions for "
+                                           , name
+                                           ]
 
-        pure $ ConstantDef name c
+        pure $ ConstantDef name e
 
       insert name v table ctxt = setState $ ctxt { constTable = M.insert name v table }
 
