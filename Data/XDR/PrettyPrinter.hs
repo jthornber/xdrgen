@@ -2,6 +2,7 @@ module Data.XDR.PrettyPrinter
     ( ppXDR
     ) where
 
+import System.Path
 import Text.PrettyPrint.Leijen as PP hiding (braces, indent)
 
 import Data.XDR.AST
@@ -18,7 +19,7 @@ ppOptional fn (Just a) = fn a
 braces :: [Doc] -> Doc
 braces ds = nest indent (lbrace <$> vcat ds) <$> rbrace
 
-ppXDR :: Maybe FilePath -> Specification -> String
+ppXDR :: Maybe AbsFile -> Specification -> String
 ppXDR _ = show . ppSpec
 
 

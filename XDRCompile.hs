@@ -5,10 +5,13 @@ import Control.Monad
 import qualified Data.ByteString as B
 import Data.List
 import Data.Maybe
+import Prelude hiding (FilePath)
 import System.Console.GetOpt
 import System.Environment
 import System.Exit
-import System.IO
+import System.IO hiding (FilePath)
+import System.Path
+import System.Posix.Directory
 
 import Data.XDR.AST
 import Data.XDR.Parser
@@ -47,8 +50,8 @@ usage = usageInfo header options
 
 data Printer = Printer {
       ppFormat :: String,
-      ppHeader :: Maybe FilePath -> Specification -> String,
-      ppSource :: Maybe FilePath -> Specification -> String
+      ppHeader :: Maybe AbsFile -> Specification -> String,
+      ppSource :: Maybe AbsFile -> Specification -> String
     }
 
 printers :: [Printer]
@@ -64,7 +67,7 @@ die s = do
 getPrinter :: String -> Maybe Printer
 getPrinter name = find ((==name) . ppFormat) printers
 
-showResult :: Opts -> Maybe FilePath -> Either [ParseError] Specification -> IO ()
+showResult :: Opts -> Maybe AbsFile -> Either [ParseError] Specification -> IO ()
 showResult opts file (Left errs) = die (unlines . map show $ errs)
 
 showResult opts file (Right spec) = do
@@ -98,22 +101,22 @@ processOpts opts = foldl (flip ($)) defaultOpts opts
 defines :: [(String, Integer)]
 defines = [("FALSE", 0), ("TRUE", 1)]
 
-processFile :: Opts -> FilePath -> IO ()
+processFile :: Opts -> AbsFile -> IO ()
 processFile opts file = parseFile defines file >>=
                         showResult opts (Just file)
 
-processFiles :: Opts -> [FilePath] -> IO ()
+processFiles :: Opts -> [AbsFile] -> IO ()
 processFiles opts [] = do
   txt <- B.getContents
   let ast = parseString defines txt "<stdin>"
   showResult opts Nothing ast
-
 processFiles opts files = do
     forM_ files (processFile opts)
 
 main :: IO ()
 main = do
+  cwd <- asAbsDir <$> getWorkingDirectory
   args <- getArgs
   (optList, files) <- parseOpts args
   let opts = processOpts optList
-  processFiles opts files
+  processFiles opts . map (mkAbsPath cwd) $ files

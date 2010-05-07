@@ -9,6 +9,7 @@ import qualified Data.Digest.Pure.MD5 as MD5
 import Data.Maybe
 import Data.TypeHash
 import Data.XDR.AST
+import System.Path
 import Text.PrettyPrint.Leijen as PP hiding (semiBraces, braces, indent)
 
 ----------------------------------------------------------------
@@ -32,7 +33,7 @@ md5 = text . show . MD5.md5 . B.pack . map (fromIntegral . ord)
 block :: [String] -> Doc
 block = foldr ((<$>) . text) empty
 
-ppCHeader :: Maybe FilePath -> Specification -> String
+ppCHeader :: Maybe AbsFile -> Specification -> String
 ppCHeader _ spec = show $ header <--> ppSpec spec <--> ppFuncs spec <--> footer
     where
       header = vcat [ text "#ifndef" <+> compileGuard
@@ -107,7 +108,7 @@ ppCHeader _ spec = show $ header <--> ppSpec spec <--> ppFuncs spec <--> footer
                              " *x, void **data, size_t *len, struct xdr_thunk *release);") <$>
                        text (n ++ " *XDR_unpack_" ++ n ++ "(struct unpacker *u, struct xdr_thunk *release);")
 
-ppCImpl :: Maybe FilePath -> Specification -> String
+ppCImpl :: Maybe AbsFile -> Specification -> String
 ppCImpl _ spec = show $ foldr (<-->) empty [cIncludes, poolCode, packerCode, unpackerCode, basicTypeMarshalling]
 
 (<-->) :: Doc -> Doc -> Doc

@@ -10,9 +10,9 @@ Synopsis:       XDR utilities
 Build-Type:     Simple
 
 Executable XDRCompile
-  Build-Depends: base >= 4.0, parsec >= 3, syb, containers, wl-pprint, typehash, pureMD5, bytestring, filepath
+  Build-Depends: base >= 4.0, parsec >= 3, syb, containers, wl-pprint, typehash, pureMD5, bytestring, pathtype, unix
   Main-Is: XDRCompile.hs
 
 Library
-  Build-Depends:     base >= 4.0, parsec >= 3, syb, containers, wl-pprint, typehash, pureMD5, bytestring, filepath
+  Build-Depends:     base >= 4.0, parsec >= 3, syb, containers, wl-pprint, typehash, pureMD5, bytestring, pathtype, unix
   Exposed-modules:   Data.XDR.AST, Data.XDR.Parser, Data.XDR.PrettyPrinter, Data.XDR.PrettyPrintC

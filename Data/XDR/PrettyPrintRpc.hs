@@ -6,7 +6,7 @@ import Control.Monad
 import Data.Char
 import Data.Maybe
 import Data.XDR.AST
-import System.FilePath hiding ((</>))
+import System.Path hiding ((</>))
 import Text.PrettyPrint.Leijen as PP hiding (semiBraces, braces, indent)
 
 indent :: Int
@@ -26,11 +26,11 @@ switchBraces =
   where
     f ds = lbrace <$> vcat ds <$> rbrace
 
-fileGuard :: FilePath -> Doc
+fileGuard :: Maybe AbsFile -> Doc
 fileGuard file =
     text ("XDR_" ++ map toUpper bn ++ "_H")
   where
-    bn = takeBaseName file
+    bn = maybe "stdin" (getPathString . takeBaseName) file
 
 getTypedefs :: [Definition] -> [Typedef]
 getTypedefs =
@@ -237,13 +237,13 @@ ppType (TStruct sd) = error "unexpected struct"
 ppType (TUnion ud) = error "unexpected union"
 ppType (TTypedef n) = text n
 
-ppInclude :: Maybe FilePath -> Doc
+ppInclude :: Maybe AbsFile -> Doc
 ppInclude file =
     text "#include" <+> text (maybe "<rpc/xdr.h>" f file)
   where
-    f s = "\"" ++ takeBaseName s ++ ".h\""
+    f s = "\"" ++ (getPathString . takeBaseName $ s) ++ ".h\""
 
-ppRpcHeader :: Maybe FilePath -> Specification -> String
+ppRpcHeader :: Maybe AbsFile -> Specification -> String
 ppRpcHeader file spec =
     show $ header <$> ppSpec spec <$> ppFuncs spec <$> footer
   where
@@ -251,7 +251,7 @@ ppRpcHeader file spec =
                    text "#define" <+> compileGuard,
                    text "#include <rpc/xdr.h>"]
     footer = text "#endif /*" <+> compileGuard <+> text "*/"
-    compileGuard = fileGuard $ fromMaybe "stdin" file
+    compileGuard = fileGuard file
 
     ppSpec (Specification defs) =
         f defs
@@ -299,7 +299,7 @@ ppRpcHeader file spec =
       where
         f (Typedef n ti) = ppFuncSig n ti <> semi
 
-ppRpcSource :: Maybe FilePath -> Specification -> String
+ppRpcSource :: Maybe AbsFile -> Specification -> String
 ppRpcSource file spec = show $ ppInclude file <$> ppSpec spec
   where
     ppSpec (Specification defs) =

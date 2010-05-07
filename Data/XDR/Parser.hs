@@ -14,7 +14,7 @@ import qualified Data.Map as M
 import Data.Maybe
 import Data.Set (Set)
 import qualified Data.Set as S
-
+import System.Path
 import Text.Parsec hiding (ParseError)
 import Text.Parsec.ByteString hiding (Parser)
 import Text.Parsec.Token (makeTokenParser, GenLanguageDef (..))
@@ -73,10 +73,12 @@ parseString defines txt source =
       Left err -> Left [ParseError . show $ err]
       Right spec -> Right spec
 
-parseFile :: [(String, Integer)] -> FilePath -> IO (Either [ParseError] Specification)
+parseFile :: [(String, Integer)] -> AbsFile -> IO (Either [ParseError] Specification)
 parseFile defines path = do
-  input <- B.readFile path
-  return $ parseString defines input path
+  input <- B.readFile path'
+  return $ parseString defines input path'
+    where
+      path' = getPathString path
 
 data Context = Context { constTable :: Map String Integer
                        , nextEnum :: Integer
