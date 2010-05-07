@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveDataTypeable, StandaloneDeriving, FlexibleInstances #-}
 
 module Data.XDR.AST
     ( ConstPrim (..)
@@ -16,7 +16,6 @@ module Data.XDR.AST
     , ConstantDef (..)
     , Definition (..)
     , Specification (..)
-    , ImportSpecification (..)
     , evalConstExpr
     , evalConstPrim
     ) where
@@ -95,12 +94,9 @@ data Definition = DefTypedef Typedef
                 | DefConstant ConstantDef
                   deriving (Show, Typeable, Data)
 
-newtype Specification = Specification [Definition] 
-                      deriving (Show, Typeable, Data)
-                               
-data ImportSpecification = ImportSpecification { importedSpecs :: Map AbsFile ImportSpecification
-                                               , spec :: Specification
-                                               } deriving (Show)
+data Specification = Specification { imports :: Map AbsFile Specification
+                                   , defs :: [Definition]
+                                   } deriving (Show)
 
 evalConstExpr :: ConstExpr -> Integer
 evalConstExpr (CEPrim p) = evalConstPrim p

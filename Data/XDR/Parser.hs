@@ -1,7 +1,7 @@
 module Data.XDR.Parser
-    ( parseString
+    ( LanguageOptions (..)
+    , parseString
     , parseFile
-    , parseImportSpecification
     , ParseError
     ) where
 
@@ -85,29 +85,35 @@ whiteSpace = T.whiteSpace l
 
 ----------------------------------------------------------------
 
+data LanguageOptions = Defines { constantDefinitions :: [(String, Integer)] }
+                     | Imports { includeDirs :: [AbsDir] }
+                     deriving (Show, Eq)
+
 -- FIXME: add location detail
 data ParseError = ParseError String
 
 instance Show ParseError where
     show (ParseError str) = str
 
-parseString :: [(String, Integer)] -> ByteString -> String -> Either [ParseError] Specification
-parseString defines txt source =
-    case runParser xdrParser (initContext defines) source txt of
-      Left err -> Left [ParseError . show $ err]
-      Right spec -> Right spec
+parseString :: [LanguageOptions] -> ByteString -> String -> Either [ParseError] Specification
+parseString options txt source =
+  case runParser xdrParser (initContext defines) source txt of
+    Left err -> Left [ParseError . show $ err]
+    Right spec -> Right spec
+  where
+    defines = concat [cs | (Defines cs) <- options]
 
-parseFile :: [(String, Integer)] -> AbsFile -> IO (Either [ParseError] Specification)
-parseFile defines path = do
+parseFile :: [LanguageOptions] -> AbsFile -> IO (Either [ParseError] Specification)
+parseFile options path = do
   input <- B.readFile path'
-  return $ parseString defines input path'
+  return $ parseString options input path'
     where
       path' = getPathString path
 
 data ImportSpec = ImportSpec [RelFile] [Definition]
 
 -- FIXME: using ExceptionT IO would simplify this
-parseImportSpecification :: [(String, Integer)] -> [AbsDir] -> AbsFile -> IO (Either [ParseError] ImportSpecification)
+parseImportSpecification :: [(String, Integer)] -> [AbsDir] -> AbsFile -> IO (Either [ParseError] Specification)
 parseImportSpecification defines includes path = do
   txt <- B.readFile path'
   result <-  runParserT (importSpec includes) (initContext defines) path' txt
@@ -306,7 +312,7 @@ withInput new p = do
   putState oldCtxt
   return r
 
-importStatement :: [AbsDir] -> Parser IO ((AbsFile, ImportSpecification), Context)
+importStatement :: [AbsDir] -> Parser IO ((AbsFile, Specification), Context)
 importStatement includes = do
   path <- reserved "import" *> (asRelFile <$> stringLiteral) <* semi
   mpath <- liftIO $ pathLookup includes path
@@ -318,7 +324,7 @@ importStatement includes = do
       withInput txt ((\s c -> ((path', s), c)) <$> importSpec includes <*> getState)
 
 -- An xdr file that contains imports
-importSpec :: [AbsDir] -> Parser IO ImportSpecification
+importSpec :: [AbsDir] -> Parser IO Specification
 importSpec includes = do
   ctxt <- getState
   specs <- whiteSpace *> many (importStatement includes)
@@ -328,8 +334,8 @@ importSpec includes = do
 
   -- parse the rest of the file in this new uber context
   putState ctxt'
-  spec <- specification
-  return $ ImportSpecification (M.fromList . map fst $ specs) spec
+  Specification _ defs <- specification
+  return $ Specification (M.fromList . map fst $ specs) defs
   
 combineImports :: Context -> Context -> Parser IO Context
 combineImports (Context m1 _) (Context m2 _) =
@@ -340,7 +346,7 @@ combineImports (Context m1 _) (Context m2 _) =
     duplicates = M.toList $ M.intersection m1 m2
 
 specification :: (Monad m) => Parser m Specification
-specification = Specification <$> (whiteSpace *> many definition <* eof)
+specification = Specification M.empty <$> (whiteSpace *> many definition <* eof)
 
 xdrParser :: Parser Identity Specification
 xdrParser = specification

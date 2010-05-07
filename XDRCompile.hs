@@ -101,13 +101,13 @@ defines :: [(String, Integer)]
 defines = [("FALSE", 0), ("TRUE", 1)]
 
 processFile :: Opts -> AbsFile -> IO ()
-processFile opts file = parseFile defines file >>=
+processFile opts file = parseFile [Defines defines] file >>=
                         showResult opts (Just file)
 
 processFiles :: Opts -> [AbsFile] -> IO ()
 processFiles opts [] = do
   txt <- B.getContents
-  let ast = parseString defines txt "<stdin>"
+  let ast = parseString [Defines defines] txt "<stdin>"
   showResult opts Nothing ast
 processFiles opts files = forM_ files (processFile opts)
 

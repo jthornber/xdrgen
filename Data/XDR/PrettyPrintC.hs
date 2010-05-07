@@ -43,9 +43,10 @@ ppCHeader _ spec = show $ header <--> ppSpec spec <--> ppFuncs spec <--> footer
                     , text "#include <stdint.h>"
                     ]
       footer = text "#endif"
-      compileGuard = text "XDR_" <> (md5 . show . typeCode $ spec) <> text "_H"
+      --compileGuard = text "XDR_" <> (md5 . show . typeCode $ spec) <> text "_H"
+      compileGuard = text "XDR_" <> text "blahblahblah" <> text "_H"
 
-      ppSpec (Specification defs) = vcat . punctuate linebreak . map ppDef $ defs
+      ppSpec (Specification _ defs) = vcat . punctuate linebreak . map ppDef $ defs
 
       ppDef (DefConstant cd) = ppConstDef cd
       ppDef (DefTypedef td) = ppTypedef td
@@ -97,8 +98,8 @@ ppCHeader _ spec = show $ header <--> ppSpec spec <--> ppFuncs spec <--> footer
       ppType (TUnion ud) = text "struct" <+> ppUnionDetail ud
       ppType (TTypedef n) = text n
 
-      ppFuncs (Specification defs) = thunkCode <$>
-                                     (vcat . map declareFuncs . mapMaybe getTypedef $ defs)
+      ppFuncs (Specification _ defs) = thunkCode <$>
+                                       (vcat . map declareFuncs . mapMaybe getTypedef $ defs)
 
       getTypedef (DefTypedef (Typedef n _)) = Just n
       getTypedef _ = Nothing

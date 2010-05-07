@@ -24,8 +24,7 @@ ppXDR _ = show . ppSpec
 
 
 ppSpec :: Specification -> Doc
-ppSpec (Specification defs) = vcat . punctuate linebreak . map ppDef $ defs
-
+ppSpec (Specification _ defs) = vcat . punctuate linebreak . map ppDef $ defs
 ppDef :: Definition -> Doc
 ppDef (DefTypedef td) = ppTypedef td
 ppDef (DefConstant cd) = ppConstdef cd
