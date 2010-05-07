@@ -1,6 +1,7 @@
 module Data.XDR.Parser
     ( parseString
     , parseFile
+    , parseImportSpecification
     , ParseError
     ) where
 
@@ -15,6 +16,7 @@ import Data.Maybe
 import Data.Set (Set)
 import qualified Data.Set as S
 import System.Path
+
 import Text.Parsec hiding (ParseError)
 import Text.Parsec.ByteString hiding (Parser)
 import Text.Parsec.Token (makeTokenParser, GenLanguageDef (..))
@@ -22,6 +24,7 @@ import qualified Text.Parsec.Token as T
 import Text.Parsec.Expr
 
 import Data.XDR.AST
+import Data.XDR.PathUtils
 
 ----------------------------------------------------------------
 -- Lexer
@@ -41,7 +44,7 @@ l = makeTokenParser $
     where
       tokens = [ "bool", "case", "const", "default", "double", "quadruple", "enum"
                , "float", "hyper", "opaque", "string", "struct", "switch", "typedef"
-               , "union", "unsigned", "void", "int"
+               , "union", "unsigned", "void", "int", "import"
                ]
 
 angles = T.angles l
@@ -56,6 +59,7 @@ parens = T.parens l
 reserved = T.reserved l
 reservedOp = T.reservedOp l
 semi = T.semi l
+string = T.stringLiteral l
 squares = T.squares l
 whiteSpace = T.whiteSpace l
 
@@ -68,7 +72,7 @@ instance Show ParseError where
     show (ParseError str) = str
 
 parseString :: [(String, Integer)] -> ByteString -> String -> Either [ParseError] Specification
-parseString defines txt source =
+parseString defines txt source p =
     case runParser xdrParser (initContext defines) source txt of
       Left err -> Left [ParseError . show $ err]
       Right spec -> Right spec
@@ -80,6 +84,35 @@ parseFile defines path = do
     where
       path' = getPathString path
 
+data ImportSpec = ImportSpec [RelFile] [Definition]
+
+-- FIXME: using ExceptionT IO would simplify this
+parseImportSpecification :: [(String, Integer)] -> [AbsDir] -> AbsFile -> IO (Either [ParseError] ImportSpecification)
+parseImportSpecification defines includes path = do
+  txt <- B.readFile path
+  er <- runParser importSpec (initContext defines) path txt
+  case er of
+    Left errs -> Left errs
+    Right (ImportSpec is ds) -> do
+      ei <- foldM parseImport is
+      case ei of
+        Left errs -> return $ Left errs
+        Right map -> return $ ImportSpecification map (Specification ds)
+      
+  where
+    parseImport :: String -> Either [ParseError] (Map AbsFile ImportSpecification) -> 
+                   IO (Either [ParseError] (AbsFile, ImportSpecification))
+    parseImport _ (Left errs) = return $ Left errs
+    parseImport im (Right m) = do
+      mim <- pathLookup includes im
+      case mim of
+        Nothing -> return $ Left [ParseError "could not find import '" ++ getPathString im ++ "'"]
+        Just im' -> do
+          result <- parseImportSpecification defines includes im'
+          case result of
+            Left errs -> return $ Left errs
+            Right ispec -> return $ Right (M.insert im' ispec)
+      
 data Context = Context { constTable :: Map String Integer
                        , nextEnum :: Integer
                        }
@@ -264,6 +297,12 @@ typeDef = choice [ mkSimple <$> (reserved "typedef" *> declaration)
 
 definition :: Parser Definition
 definition = ((DefConstant <$> constantDef) <|> (DefTypedef <$> typeDef)) <* semi
+
+importStatement :: Parser RelFile
+importStatement = reserved "import" *> string <* semi
+
+importSpec :: Parser ImportSpec
+importSpec = ImportSpec <$> (whiteSpace *> many importStatement) <*> (many definition <* eof)
 
 xdrParser :: Parser Specification
 xdrParser = Specification <$> (whiteSpace *> many definition <* eof)

@@ -13,9 +13,12 @@ module Data.XDR.AST
     , ConstantDef (..)
     , Definition (..)
     , Specification (..)
+    , ImportSpecification (..)
     ) where
 
 import Data.Generics
+import Data.Map (Map)
+import System.Path
 
 ----------------------------------------------------------------
 
@@ -73,6 +76,11 @@ data Definition = DefTypedef Typedef
                 | DefConstant ConstantDef
                   deriving (Show, Typeable, Data)
 
-newtype Specification = Specification [Definition] deriving (Show, Typeable, Data)
+newtype Specification = Specification [Definition] 
+                      deriving (Show, Typeable, Data)
+                               
+data ImportSpecification = ImportSpecification { importedSpecs :: Map AbsFile ImportSpecification
+                                               , spec :: Specification
+                                               } deriving (Show)
 
 ----------------------------------------------------------------
