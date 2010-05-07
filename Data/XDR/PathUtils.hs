@@ -14,6 +14,6 @@ pathLookup (include:includes) rf = do
   b <- fileExist' af
   if b then return $ Just af else pathLookup includes rf
   
-fileExist' :: Path ar fd -> IO Bool
+fileExist' :: (AbsRelClass ar) => Path ar fd -> IO Bool
 fileExist' = fileExist . getPathString
 

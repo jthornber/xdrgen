@@ -8,8 +8,11 @@ module Data.XDR.Parser
 import Control.Applicative hiding (many, (<|>))
 import Control.Arrow
 import Control.Monad
+import Control.Monad.Identity
+import Control.Monad.Trans
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
+import Data.Foldable hiding (concat)
 import Data.List
 import Data.Map (Map)
 import qualified Data.Map as M
@@ -29,6 +32,7 @@ import Data.XDR.PathUtils
 
 ----------------------------------------------------------------
 -- Lexer
+l :: (Monad m) => T.GenTokenParser ByteString Context m
 l = makeTokenParser
     LanguageDef { commentStart = "/*"
                 , commentEnd = "*/"
@@ -48,20 +52,35 @@ l = makeTokenParser
                , "union", "unsigned", "void", "int", "import"
                ]
 
+angles, braces, parens, squares :: (Monad m) => Parser m a -> Parser m a
 angles = T.angles l
 braces = T.braces l
+parens = T.parens l
+squares = T.squares l
+
+colon, comma, semi :: (Monad m) => Parser m String
 colon = T.colon l
 comma = T.comma l
+semi = T.semi l
+
+commaSep, commaSep1 :: (Monad m) => Parser m a -> Parser m [a]
 commaSep = T.commaSep l
 commaSep1 = T.commaSep1 l
+
+identifier :: (Monad m) => Parser m String
 identifier = T.identifier l
+
+integer :: (Monad m) => Parser m Integer
 integer = T.integer l
-parens = T.parens l
+
+reserved, reservedOp :: (Monad m) => String -> Parser m ()
 reserved = T.reserved l
 reservedOp = T.reservedOp l
-semi = T.semi l
-string = T.stringLiteral l
-squares = T.squares l
+
+stringLiteral :: (Monad m) => Parser m String
+stringLiteral = T.stringLiteral l
+
+whiteSpace :: (Monad m) => Parser m ()
 whiteSpace = T.whiteSpace l
 
 ----------------------------------------------------------------
@@ -73,7 +92,7 @@ instance Show ParseError where
     show (ParseError str) = str
 
 parseString :: [(String, Integer)] -> ByteString -> String -> Either [ParseError] Specification
-parseString defines txt source p =
+parseString defines txt source =
     case runParser xdrParser (initContext defines) source txt of
       Left err -> Left [ParseError . show $ err]
       Right spec -> Right spec
@@ -90,30 +109,14 @@ data ImportSpec = ImportSpec [RelFile] [Definition]
 -- FIXME: using ExceptionT IO would simplify this
 parseImportSpecification :: [(String, Integer)] -> [AbsDir] -> AbsFile -> IO (Either [ParseError] ImportSpecification)
 parseImportSpecification defines includes path = do
-  txt <- B.readFile path
-  er <- runParser importSpec (initContext defines) path txt
-  case er of
-    Left errs -> Left errs
-    Right (ImportSpec is ds) -> do
-      ei <- foldM parseImport is
-      case ei of
-        Left errs -> return $ Left errs
-        Right map -> return $ ImportSpecification map (Specification ds)
-      
+  txt <- B.readFile path'
+  result <-  runParserT (importSpec includes) (initContext defines) path' txt
+  case result of
+    Left errs -> return $ Left [ParseError . show $ errs]
+    Right ispec -> return $ Right ispec
   where
-    parseImport :: String -> Either [ParseError] (Map AbsFile ImportSpecification) -> 
-                   IO (Either [ParseError] (AbsFile, ImportSpecification))
-    parseImport _ (Left errs) = return $ Left errs
-    parseImport im (Right m) = do
-      mim <- pathLookup includes im
-      case mim of
-        Nothing -> return $ Left [ParseError "could not find import '" ++ getPathString im ++ "'"]
-        Just im' -> do
-          result <- parseImportSpecification defines includes im'
-          case result of
-            Left errs -> return $ Left errs
-            Right ispec -> return $ Right (M.insert im' ispec)
-      
+    path' = getPathString path
+
 data Context = Context { constTable :: Map String ConstPrim
                        , nextEnum :: Integer
                        }
@@ -121,21 +124,22 @@ data Context = Context { constTable :: Map String ConstPrim
 initContext :: [(String, Integer)] -> Context
 initContext defines = Context (M.fromList . map (second ConstLit) $ defines) 0
 
-type Parser = GenParser Char Context
+-- type Parser = GenParser Char Context
+type Parser = ParsecT ByteString Context
 
 ----------------------------------------------------------------
 
-constPrim :: Parser ConstPrim
+constPrim :: (Monad m) => Parser m ConstPrim
 constPrim = (ConstLit <$> integer) <|> (findReference =<< identifier)
-  where
-    findReference :: String -> Parser ConstPrim
-    findReference n = do
-      c <- getState
-      case M.lookup n (constTable c) of
-        Nothing -> unexpected $ "unknown constant '" ++ n ++ "'"
-        Just p -> return p
-  
-constExpr :: Parser ConstExpr
+
+findReference :: (Monad m) => String -> Parser m ConstPrim
+findReference n = do
+  c <- getState
+  case M.lookup n (constTable c) of
+    Nothing -> unexpected $ "unknown constant '" ++ n ++ "'"
+    Just p -> return p
+
+constExpr :: (Monad m) => Parser m ConstExpr
 constExpr = buildExpressionParser table term
     where
       table = [ [ prefix "-" (CEUnExpr NEGATE)
@@ -155,10 +159,10 @@ constExpr = buildExpressionParser table term
 
       term = (CEPrim <$> constPrim) <|> parens constExpr
 
-simpleType :: String -> Type -> Parser Type
+simpleType :: (Monad m) => String -> Type -> Parser m Type
 simpleType keyword t = const t <$> try (reserved keyword)
 
-typeSpec :: Parser Type
+typeSpec :: (Monad m) => Parser m Type
 typeSpec = choice [ try (reserved "unsigned" *> (simpleType "int" TUInt <|> simpleType "hyper" TUHyper))
                   , simpleType "int" TInt
                   , simpleType "hyper" THyper
@@ -172,14 +176,17 @@ typeSpec = choice [ try (reserved "unsigned" *> (simpleType "int" TUInt <|> simp
                   , TTypedef <$> identifier
                   ] <?> "type"
 
-enumTypeSpec :: Parser Type
+enumTypeSpec :: (Monad m) => Parser m Type
 enumTypeSpec = TEnum <$> (reserved "enum" *> enumDetail)
 
-enumDetail :: Parser EnumDetail
+enumDetail :: (Monad m) => Parser m EnumDetail
 enumDetail = setNextEnum 0 *> braces body
     where
       body = EnumDetail <$> commaSep pair
-      pair = ((,) <$> identifier <*> optionMaybe (reservedOp "=" *> constPrim)) >>= uncurry mkElem
+      pair = do
+        n <- identifier
+        mc <- optionMaybe (reservedOp "=" *> constPrim)
+        mkElem n mc
 
       setNextEnum n = do
         ctxt <- getState
@@ -192,29 +199,29 @@ enumDetail = setNextEnum 0 *> braces body
         return v
 
       mkElem n Nothing = incNextEnum >>= insertConst n . ConstLit
-      mkElem n (Just e) = 
-        let v = evalConstPrim e in (setNextEnum v + 1) *> insertConst n (ConstEnumRef n e)
+      mkElem n (Just e) =
+        let v = evalConstPrim e in (setNextEnum (v + 1)) *> insertConst n (ConstEnumRef n e)
 
       insertConst n v = do
         ctxt <- getState
         setState $ ctxt { constTable = M.insert n v (constTable ctxt) }
         pure (n, v)
 
-structTypeSpec :: Parser Type
+structTypeSpec :: (Monad m) => Parser m Type
 structTypeSpec = TStruct <$> (reserved "struct" *> structDetail)
 
-structDetail :: Parser StructDetail
+structDetail :: (Monad m) => Parser m StructDetail
 structDetail = braces body
     where body = StructDetail <$> many1 (declaration <* semi)
 
-unionTypeSpec :: Parser Type
+unionTypeSpec :: (Monad m) => Parser m Type
 unionTypeSpec = TUnion <$> (reserved "union" *> unionDetail)
 
 infixl 4 <*-*>
 (<*-*>) :: (Applicative f) => f (a -> b -> c) -> f (a, b) -> f c
 (<*-*>) fn fab = uncurry <$> fn <*> fab
 
-unionDetail :: Parser UnionDetail
+unionDetail :: (Monad m) => Parser m UnionDetail
 unionDetail = UnionDetail <$> switch <*-*> braces ((,) <$> caseStatements <*> deflt)
     where
       switch         = reserved "switch" *> parens declaration
@@ -222,7 +229,7 @@ unionDetail = UnionDetail <$> switch <*-*> braces ((,) <$> caseStatements <*> de
       caseStatement  = (,) <$> (reserved "case" *> constPrim <* colon) <*> declaration <* semi
       deflt          = optionMaybe (reserved "default" *> colon *> declaration <* semi)
 
-declaration :: Parser Decl
+declaration :: (Monad m) => Parser m Decl
 declaration =
     choice [ pure DeclVoid <* reserved "void"
            , try (mkString <$> (reserved "string" *> identifier) <*> angles (optionMaybe constExpr))
@@ -230,18 +237,18 @@ declaration =
            , typeSpec >>= mkBasicOrPointer
            ] <?> "declaration"
     where
-      mkBasicOrPointer :: Type -> Parser Decl
+      mkBasicOrPointer :: (Monad m) => Type -> Parser m Decl
       mkBasicOrPointer t = choice [ mkPointer t <$> (reservedOp "*" *> identifier)
                                   , identifier >>= mkBasic t
                                   ]
 
-      mkBasic :: Type -> String -> Parser Decl
+      mkBasic :: (Monad m) => Type -> String -> Parser m Decl
       mkBasic t n = choice [ mkArray t n <$> squares constExpr
                            , mkVarArray t n <$> angles (optionMaybe constExpr)
                            , pure (mkSimple t n)
                            ]
 
-      mkOpaque :: String -> Parser Decl
+      mkOpaque :: (Monad m) => String -> Parser m Decl
       mkOpaque n = choice [ mkFixedOpaque n <$> squares constExpr
                           , mkVarOpaque n <$> angles (optionMaybe constExpr)
                           ]
@@ -254,7 +261,7 @@ declaration =
       mkString n      = Decl n . DeclString
       mkPointer t n   = Decl n $ DeclPointer t
 
-constantDef :: Parser ConstantDef
+constantDef :: (Monad m) => Parser m ConstantDef
 constantDef = ((,) <$> (reserved "const" *> identifier <* reservedOp "=") <*> constExpr) >>= uncurry mkConst
     where
       mkConst name e = do
@@ -273,7 +280,7 @@ constantDef = ((,) <$> (reserved "const" *> identifier <* reservedOp "=") <*> co
 
       insert name v table ctxt = setState $ ctxt { constTable = M.insert name v table }
 
-typeDef :: Parser Typedef
+typeDef :: (Monad m) => Parser m Typedef
 typeDef = choice [ mkSimple <$> (reserved "typedef" *> declaration)
                  , mkEnum   <$> (reserved "enum" *> identifier) <*> enumDetail
                  , mkStruct <$> (reserved "struct" *> identifier) <*> structDetail
@@ -286,16 +293,56 @@ typeDef = choice [ mkSimple <$> (reserved "typedef" *> declaration)
       mkStruct n           = Typedef n . DefStruct
       mkUnion n            = Typedef n . DefUnion
 
-definition :: Parser Definition
+definition :: (Monad m) => Parser m Definition
 definition = ((DefConstant <$> constantDef) <|> (DefTypedef <$> typeDef)) <* semi
 
-importStatement :: Parser RelFile
-importStatement = reserved "import" *> string <* semi
+withInput :: ByteString -> Parser IO a -> Parser IO a
+withInput new p = do
+  old <- getInput
+  oldCtxt <- getState
+  setInput new
+  r <- p
+  setInput old
+  putState oldCtxt
+  return r
 
-importSpec :: Parser ImportSpec
-importSpec = ImportSpec <$> (whiteSpace *> many importStatement) <*> (many definition <* eof)
+importStatement :: [AbsDir] -> Parser IO ((AbsFile, ImportSpecification), Context)
+importStatement includes = do
+  path <- reserved "import" *> (asRelFile <$> stringLiteral) <* semi
+  mpath <- liftIO $ pathLookup includes path
+  case mpath of
+    Nothing -> unexpected $ "couldn't find import '" ++ getPathString path ++ "'"
+    Just path' -> do
+      let pathTxt = getPathString path
+      txt <- liftIO $ B.readFile pathTxt
+      withInput txt ((\s c -> ((path', s), c)) <$> importSpec includes <*> getState)
 
-xdrParser :: Parser Specification
-xdrParser = Specification <$> (whiteSpace *> many definition <* eof)
+-- An xdr file that contains imports
+importSpec :: [AbsDir] -> Parser IO ImportSpecification
+importSpec includes = do
+  ctxt <- getState
+  specs <- whiteSpace *> many (importStatement includes)
+
+  -- we need to combine all the contexts generated by the imports.
+  ctxt' <- foldrM combineImports ctxt . map snd $ specs
+
+  -- parse the rest of the file in this new uber context
+  putState ctxt'
+  spec <- specification
+  return $ ImportSpecification (M.fromList . map fst $ specs) spec
+  
+combineImports :: Context -> Context -> Parser IO Context
+combineImports (Context m1 _) (Context m2 _) =
+  if not . null $ duplicates
+  then fail $ "duplicate constant definitions"
+  else return $ Context (M.union m1 m2) 0
+  where
+    duplicates = M.toList $ M.intersection m1 m2
+
+specification :: (Monad m) => Parser m Specification
+specification = Specification <$> (whiteSpace *> many definition <* eof)
+
+xdrParser :: Parser Identity Specification
+xdrParser = specification
 
 ----------------------------------------------------------------
