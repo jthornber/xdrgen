@@ -345,13 +345,13 @@ ppRpcSource file spec = show $ ppInclude file <$> ppSpec spec
     ppStructDetail (StructDetail decls) =
         text "XDR xfree" :
         text "xfree.x_op = XDR_FREE" :
-        (map (uncurry ppIfFalseGoto) $ zip [0..] allocs)
+        zipWith ppIfFalseGoto [0..] allocs
         ++ [ppReturn "TRUE"]
-        ++ (map (uncurry ppUnwind) $ drop 1 . reverse $ zip [1..] frees)
+        ++ map (uncurry ppUnwind) (drop 1 . reverse $ zip [1..] frees)
         ++ [text "xfree0:" <$> ppReturn "FALSE"]
       where
-        allocs = catMaybes $ map (ppStructCall "xdrs") decls
-        frees = catMaybes $ map (ppStructCall "&xfree") decls
+        allocs = mapMaybe (ppStructCall "xdrs") decls
+        frees = mapMaybe (ppStructCall "&xfree") decls
 
     ppStructCall xdrs (Decl n (DeclSimple t)) =
         Just $ ppCallType xdrs ("&objp->" ++ n) t

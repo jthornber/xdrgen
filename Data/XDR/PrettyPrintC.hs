@@ -67,8 +67,8 @@ ppCHeader _ spec = show $ header <--> ppSpec spec <--> ppFuncs spec <--> footer
       ppUnionDetail (UnionDetail selector cases mDefault) =
           semiBraces [ ppDecl selector
                      , text "union" <+>
-                       (semiBraces $
-                        ((map (ppDecl . snd) cases) ++ [ppOptional ppDecl mDefault])) <+> text "u"
+                       semiBraces
+                        (map (ppDecl . snd) cases ++ [ppOptional ppDecl mDefault]) <+> text "u"
                  ]
 
       ppDecl (Decl n (DeclSimple t)) = ppType t <+> text n
@@ -98,7 +98,7 @@ ppCHeader _ spec = show $ header <--> ppSpec spec <--> ppFuncs spec <--> footer
       ppType (TTypedef n) = text n
 
       ppFuncs (Specification defs) = thunkCode <$>
-                                     (vcat . map declareFuncs . catMaybes . map getTypedef $ defs)
+                                     (vcat . map declareFuncs . mapMaybe getTypedef $ defs)
 
       getTypedef (DefTypedef (Typedef n _)) = Just n
       getTypedef _ = Nothing

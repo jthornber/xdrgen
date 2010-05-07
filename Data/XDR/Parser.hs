@@ -26,7 +26,7 @@ import Data.XDR.AST
 
 ----------------------------------------------------------------
 -- Lexer
-l = makeTokenParser $
+l = makeTokenParser
     LanguageDef { commentStart = "/*"
                 , commentEnd = "*/"
                 , commentLine = "//"
@@ -92,10 +92,6 @@ type Parser = GenParser Char Context
 
 ----------------------------------------------------------------
 
--- FIXME: get rid of discard
-discard :: Parser a -> Parser ()
-discard = (>> return ())
-
 constPrim :: Parser ConstPrim
 constPrim = (ConstLit <$> integer) <|> (findReference =<< identifier)
   where
@@ -121,7 +117,7 @@ constExpr = buildExpressionParser table term
               ]
 
       prefix name fun = Prefix (mkOp name fun)
-      binary name fun assoc = Infix (mkOp name fun) assoc
+      binary name fun = Infix (mkOp name fun)
       mkOp name fun = reservedOp name *> pure fun
 
       term = (CEPrim <$> constPrim) <|> parens constExpr
@@ -164,7 +160,7 @@ enumDetail = setNextEnum 0 *> braces body
 
       mkElem n Nothing = incNextEnum >>= insertConst n . ConstLit
       mkElem n (Just e) = 
-        let v = evalConstPrim e in (setNextEnum $ v + 1) *> insertConst n (ConstEnumRef n e)
+        let v = evalConstPrim e in (setNextEnum v + 1) *> insertConst n (ConstEnumRef n e)
 
       insertConst n v = do
         ctxt <- getState

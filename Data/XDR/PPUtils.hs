@@ -13,7 +13,7 @@ ppConstExpr (CEBinExpr op c1 c2) = ppBinOp op (ppConstExpr c1) (ppConstExpr c2)
 ppConstExpr (CEUnExpr NEGATE c) = parens $ text "-" <> ppConstExpr c
 
 ppBinOp :: BinOp -> Doc -> Doc -> Doc
-ppBinOp op d1 d2 = parens $ (parens d1) <+> (text . symbol $ op) <+> (parens d2)
+ppBinOp op d1 d2 = parens $ parens d1 <+> text . symbol $ op <+> parens d2
         where
           symbol PLUS = "+"
           symbol MINUS = "-"
