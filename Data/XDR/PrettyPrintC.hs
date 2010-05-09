@@ -1,3 +1,4 @@
+-- | Not complete yet.  Will be replaced by some templates.
 module Data.XDR.PrettyPrintC
     ( ppCHeader
     , ppCImpl
@@ -34,6 +35,8 @@ md5 = text . show . MD5.md5 . B.pack . map (fromIntegral . ord)
 block :: [String] -> Doc
 block = foldr ((<$>) . text) empty
 
+-- | Generate a standalone C header for marshalling the types in the
+--   XDR specification.  First argument ignored.
 ppCHeader :: Maybe AbsFile -> Specification -> String
 ppCHeader _ spec = show $ header <--> ppSpec spec <--> ppFuncs spec <--> footer
     where
@@ -108,6 +111,8 @@ ppCHeader _ spec = show $ header <--> ppSpec spec <--> ppFuncs spec <--> footer
                              " *x, void **data, size_t *len, struct xdr_thunk *release);") <$>
                        text (n ++ " *XDR_unpack_" ++ n ++ "(struct unpacker *u, struct xdr_thunk *release);")
 
+-- | Generate a standalone C implementation for marshalling the types in the
+--   XDR specification.  First argument ignored.
 ppCImpl :: Maybe AbsFile -> Specification -> String
 ppCImpl _ spec = show $ foldr (<-->) empty [cIncludes, poolCode, packerCode, unpackerCode, basicTypeMarshalling]
 

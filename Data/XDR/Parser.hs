@@ -30,8 +30,7 @@ import Text.Parsec.Expr
 import Data.XDR.AST
 import Data.XDR.PathUtils
 
-----------------------------------------------------------------
--- Lexer
+-- | Lexer
 l :: (Monad m) => T.GenTokenParser ByteString Context m
 l = makeTokenParser
     LanguageDef { commentStart = "/*"
@@ -83,26 +82,35 @@ stringLiteral = T.stringLiteral l
 whiteSpace :: (Monad m) => Parser m ()
 whiteSpace = T.whiteSpace l
 
-----------------------------------------------------------------
 
-data LanguageOptions = Defines { constantDefinitions :: [(String, Integer)] }
-                     | Imports { includeDirs :: [AbsDir] }
+
+-- | Extensions to the basic XDR language can be turned on with these options.
+data LanguageOptions = 
+  -- | Allows the caller to predefine some constant values.  e.g. True == 1
+    Defines { constantDefinitions :: [(String, Integer)] }
+  
+  -- | Turns on the imports extension.  Imported files are searched
+  --   for in the directories given.
+  | Imports { importDirs :: [AbsDir] }
                      deriving (Show, Eq)
 
--- FIXME: add location detail
-data ParseError = ParseError String
+-- | Trivial error type
+newtype ParseError = ParseError String
 
 instance Show ParseError where
     show (ParseError str) = str
 
+-- | Parse a string.  The Imports language extension is not available
+--   via this parser since it doesn't run in the IO Monad (fix this).
 parseString :: [LanguageOptions] -> ByteString -> String -> Either [ParseError] Specification
 parseString options txt source =
-  case runParser xdrParser (initContext defines) source txt of
+  case runParser specification (initContext defines) source txt of
     Left err -> Left [ParseError . show $ err]
     Right spec -> Right spec
   where
     defines = concat [cs | (Defines cs) <- options]
 
+-- | Parse a file.  The Imports language extension is available.
 parseFile :: [LanguageOptions] -> AbsFile -> IO (Either [ParseError] Specification)
 parseFile options path = do
   input <- B.readFile path'
@@ -132,8 +140,6 @@ initContext defines = Context (M.fromList . map (second ConstLit) $ defines) 0
 
 -- type Parser = GenParser Char Context
 type Parser = ParsecT ByteString Context
-
-----------------------------------------------------------------
 
 constPrim :: (Monad m) => Parser m ConstPrim
 constPrim = (ConstLit <$> integer) <|> (findReference =<< identifier)
@@ -347,8 +353,5 @@ combineImports (Context m1 _) (Context m2 _) =
 
 specification :: (Monad m) => Parser m Specification
 specification = Specification M.empty <$> (whiteSpace *> many definition <* eof)
-
-xdrParser :: Parser Identity Specification
-xdrParser = specification
 
 ----------------------------------------------------------------

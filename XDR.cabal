@@ -15,4 +15,4 @@ Executable xdrgen
 
 Library
   Build-Depends:     base >= 4.0, parsec >= 3, syb, containers, wl-pprint, typehash, pureMD5, bytestring, pathtype, unix, mtl
-  Exposed-modules:   Data.XDR.AST, Data.XDR.Parser, Data.XDR.PrettyPrinter, Data.XDR.PrettyPrintC
+  Exposed-modules:   Data.XDR

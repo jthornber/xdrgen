@@ -1,3 +1,5 @@
+-- | FIXME: Mark describe sun rpc/openxdr.
+
 module Data.XDR.PrettyPrintRpc
     (ppRpcHeader,
      ppRpcSource) where
@@ -239,6 +241,7 @@ ppInclude file =
   where
     f s = "\"" ++ (getPathString . takeBaseName $ s) ++ ".h\""
 
+-- | Pretty print a C header for use with the sun rpc library.
 ppRpcHeader :: Maybe AbsFile -> Specification -> String
 ppRpcHeader file spec =
     show $ header <$> ppSpec spec <$> ppFuncs spec <$> footer
@@ -295,6 +298,7 @@ ppRpcHeader file spec =
       where
         f (Typedef n ti) = ppFuncSig n ti <> semi
 
+-- | Pretty print a C implementation for use with the sun rpc library.
 ppRpcSource :: Maybe AbsFile -> Specification -> String
 ppRpcSource file spec = show $ ppInclude file <$> ppSpec spec
   where
