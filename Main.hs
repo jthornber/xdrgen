@@ -21,32 +21,29 @@ import Data.XDR.PrettyPrintRpc
 
 ----------------------------------------------------------------
 
+data Flag = Include String
+          | Define String Integer
+          | Format String
+          | Header
+          | Source
+
+options :: [OptDescr Flag]
+options = [ Option "I" ["include"] (ReqArg Include "INCLUDE DIR") "directory to search for XDR source files"
+          , Option "f" ["format"] (ReqArg Format "FORMAT") "output format"
+          , Option "h" ["header"] (NoArg Header) "generate header file"
+          , Option "c" ["source"] (NoArg Source) "generate source file"
+          ]
+
+header = "usage: xdrgen [option...] <file...>"
+usage = usageInfo header options
+
+----------------------------------------------------------------
+
 data Opts = Opts {
       optFormat :: String,
       optHeader :: Bool,
       optSource :: Bool
     }
-
-header = "usage: xdrgen [option...] <file...>"
-
-options :: [OptDescr (Opts -> Opts)]
-options = [
- Option "f" ["format"] (ReqArg (\s o -> o {optFormat = s}) "FORMAT")
-            "print format",
- Option "h" ["header"] (NoArg (\o -> o {optHeader = True}))
-            "header file",
- Option "c" ["source"] (NoArg (\o -> o {optSource = True}))
-            "source file"]
-
-usage = usageInfo header options
-
--- data Flag = Include FilePath
---           | Define String Integer
---           | PreProcess
-
--- options :: [OptDescr Flag]
--- options =
---     [ Option ['I'] ["include"] (ReqArg Include "INCLUDE DIR") "directory to search for XDR source files"
 
 data Printer = Printer {
       ppFormat :: String,
