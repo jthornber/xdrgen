@@ -19,12 +19,15 @@ ppOptional fn (Just a) = fn a
 braces :: [Doc] -> Doc
 braces ds = nest indent (lbrace <$> vcat ds) <$> rbrace
 
+-- | Pretty print an AST back to XDR format.  FIXME: The first
+--   argument is ignored and will be disappearing soon.
 ppXDR :: Maybe AbsFile -> Specification -> String
 ppXDR _ = show . ppSpec
 
-
+-- | FIXME: print the imports
 ppSpec :: Specification -> Doc
 ppSpec (Specification _ defs) = vcat . punctuate linebreak . map ppDef $ defs
+
 ppDef :: Definition -> Doc
 ppDef (DefTypedef td) = ppTypedef td
 ppDef (DefConstant cd) = ppConstdef cd
