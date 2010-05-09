@@ -101,8 +101,12 @@ defines :: [(String, Integer)]
 defines = [("FALSE", 0), ("TRUE", 1)]
 
 processFile :: Opts -> AbsFile -> IO ()
-processFile opts file = parseFile [Defines defines] file >>=
+processFile opts file = parseFile options file >>=
                         showResult opts (Just file)
+    where
+      options = [ Defines defines
+                , Imports [asAbsDir "/home/ejt/work/xdrgen/tests"]
+                ]
 
 processFiles :: Opts -> [AbsFile] -> IO ()
 processFiles opts [] = do
