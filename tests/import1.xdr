@@ -1,0 +1,5 @@
+import "struct1.xdr";
+
+struct bar {
+       A x;
+};

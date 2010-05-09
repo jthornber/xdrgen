@@ -112,11 +112,18 @@ parseString options txt source =
 
 -- | Parse a file.  The Imports language extension is available.
 parseFile :: [LanguageOptions] -> AbsFile -> IO (Either [ParseError] Specification)
-parseFile options path = do
+parseFile options path = 
+  parseImportSpecification defines includes path
+  where
+    defines = concat [cs | (Defines cs) <- options]
+    includes = concat [cs | (Imports cs) <- options]
+  
+{-  do
   input <- B.readFile path'
   return $ parseString options input path'
     where
       path' = getPathString path
+-}
 
 data ImportSpec = ImportSpec [RelFile] [Definition]
 
@@ -325,7 +332,7 @@ importStatement includes = do
   case mpath of
     Nothing -> unexpected $ "couldn't find import '" ++ getPathString path ++ "'"
     Just path' -> do
-      let pathTxt = getPathString path
+      let pathTxt = getPathString path'
       txt <- liftIO $ B.readFile pathTxt
       withInput txt ((\s c -> ((path', s), c)) <$> importSpec includes <*> getState)
 
@@ -344,12 +351,14 @@ importSpec includes = do
   return $ Specification (M.fromList . map fst $ specs) defs
   
 combineImports :: Context -> Context -> Parser IO Context
-combineImports (Context m1 _) (Context m2 _) =
-  if not . null $ duplicates
-  then fail $ "duplicate constant definitions"
-  else return $ Context (M.union m1 m2) 0
-  where
-    duplicates = M.toList $ M.intersection m1 m2
+combineImports (Context m1 _) (Context m2 _) = return $ Context (M.union m1 m2) 0
+  
+-- FIXME: any defines passed in from the command line will appear as duplicates, so the following code needs updating
+  -- if not . null $ duplicates
+  -- then fail $ "duplicate constant definitions: " ++ show duplicates
+  -- else return $ Context (M.union m1 m2) 0
+  -- where
+  --   duplicates = M.toList $ M.intersection m1 m2
 
 specification :: (Monad m) => Parser m Specification
 specification = Specification M.empty <$> (whiteSpace *> many definition <* eof)
