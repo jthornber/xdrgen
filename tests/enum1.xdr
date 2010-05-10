@@ -1,3 +1,5 @@
+module enum1;
+
 enum colours {
      RED = 1,
      BLUE = 2,

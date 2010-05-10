@@ -1,3 +1,5 @@
+module opaque1;
+
 struct foo {
        opaque fixed[234];
        opaque var<123>;

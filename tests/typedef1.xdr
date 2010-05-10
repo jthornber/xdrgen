@@ -1,3 +1,5 @@
+module typedef1;
+
 typedef int id_t;
 
 struct foo {

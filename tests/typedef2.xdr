@@ -1,3 +1,5 @@
+module typedef2;
+
 const MAX_QUEUE = 128;
 typedef string q_name<MAX_QUEUE>;
 

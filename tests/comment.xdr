@@ -1,3 +1,5 @@
+module comment;
+
 /*
  * Here's a comment.
  */

@@ -3,7 +3,7 @@
 module Data.XDR.AST
     ( 
       -- * Constant expressions
-     ConstExpr (..)
+      ConstExpr (..)
     , ConstPrim (..)
     , BinOp (..)
     , UnOp (..)
@@ -12,6 +12,7 @@ module Data.XDR.AST
     
       -- * XDR types
     , Specification (..)
+    , Module (..)
     , Definition (..)
     , Typedef (..)
     , ConstantDef (..)
@@ -105,10 +106,16 @@ data Definition = DefTypedef Typedef
                 | DefConstant ConstantDef
                   deriving (Show, Typeable, Data)
 
+-- | The module name as list of elements
+data Module = Module [String]
+            deriving (Show, Eq, Ord, Typeable, Data)
+
 data Specification = Specification { 
+  thisModule :: Module
+
   -- | A map of other xdr files that have been imported.  Empty if the
   -- 'Data.XDR.Parser.Imports' language option was not enabled.
-  imports :: Map AbsFile Specification
+  , imports :: Map Module Specification
   
   -- | The data type definitions
   , defs :: [Definition]
