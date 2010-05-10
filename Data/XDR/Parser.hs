@@ -122,7 +122,7 @@ parseFile options path =
   input <- B.readFile path'
   return $ parseString options input path'
     where
-      path' = getPathString path
+      path' = getPathString' path
 -}
 
 data ImportSpec = ImportSpec [RelFile] [Definition]
@@ -136,7 +136,7 @@ parseImportSpecification defines includes path = do
     Left errs -> return $ Left [ParseError . show $ errs]
     Right ispec -> return $ Right ispec
   where
-    path' = getPathString path
+    path' = getPathString' path
 
 data Context = Context { constTable :: Map String ConstPrim
                        , nextEnum :: Integer
@@ -347,9 +347,9 @@ importStatement includes = do
   let path = moduleToRelFile mod
   mpath <- liftIO $ pathLookup includes path
   case mpath of
-    Nothing -> unexpected $ "couldn't find import '" ++ getPathString path ++ "'"
+    Nothing -> unexpected $ "couldn't find import '" ++ getPathString' path ++ "'"
     Just path' -> do
-      let pathTxt = getPathString path'
+      let pathTxt = getPathString' path'
       txt <- liftIO $ B.readFile pathTxt
       withInput txt ((\s c -> ((mod, s), c)) <$> importSpec includes <*> getState)
 
