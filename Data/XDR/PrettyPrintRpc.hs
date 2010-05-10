@@ -6,6 +6,7 @@ module Data.XDR.PrettyPrintRpc
 
 import Control.Monad
 import Data.Char
+import Data.List
 import Data.Maybe
 import Data.XDR.AST
 import Data.XDR.PPUtils
@@ -29,11 +30,12 @@ switchBraces =
   where
     f ds = lbrace <$> vcat ds <$> rbrace
 
-fileGuard :: Maybe AbsFile -> Doc
-fileGuard file =
-    text ("XDR_" ++ map toUpper bn ++ "_H")
-  where
-    bn = maybe "stdin" (getPathString . takeBaseName) file
+moduleToString :: Module -> String -> String
+moduleToString (Module elements) sep =
+    concat . intersperse sep $ elements
+
+fileGuard :: Module -> Doc
+fileGuard mod = text ("XDR_" ++ map toUpper (moduleToString mod "_") ++ "_H")
 
 getTypedefs :: [Definition] -> [Typedef]
 getTypedefs =
@@ -235,22 +237,22 @@ ppType (TStruct sd) = error "unexpected struct"
 ppType (TUnion ud) = error "unexpected union"
 ppType (TTypedef n) = text n
 
-ppInclude :: AbsFile -> Doc
-ppInclude file =
-    text "#include" <+> text (f file)
+ppInclude :: Module -> Doc
+ppInclude mod =
+    text "#include" <+> text f
   where
-    f s = "\"" ++ (getPathString . takeBaseName $ s) ++ ".h\""
+    f = "\"" ++ moduleToString mod "/" ++ ".h\""
 
 -- | Pretty print a C header for use with the sun rpc library.
-ppRpcHeader :: AbsFile -> Specification -> String
-ppRpcHeader file spec =
+ppRpcHeader :: Specification -> String
+ppRpcHeader spec =
     show $ header <$> ppSpec spec <$> ppFuncs spec <$> footer
   where
     header = vcat [text "#ifndef" <+> compileGuard,
                    text "#define" <+> compileGuard,
                    text "#include <rpc/xdr.h>"]
     footer = text "#endif /*" <+> compileGuard <+> text "*/"
-    compileGuard = fileGuard (Just file)
+    compileGuard = fileGuard $ moduleName spec
 
     ppSpec (Specification _ _ defs) =
         f defs
@@ -299,8 +301,8 @@ ppRpcHeader file spec =
         f (Typedef n ti) = ppFuncSig n ti <> semi
 
 -- | Pretty print a C implementation for use with the sun rpc library.
-ppRpcSource :: AbsFile -> Specification -> String
-ppRpcSource file spec = show $ ppInclude file <$> ppSpec spec
+ppRpcSource :: Specification -> String
+ppRpcSource spec = show $ ppInclude (moduleName spec) <$> ppSpec spec
   where
     ppSpec (Specification _ _ defs) =
         f defs
