@@ -111,7 +111,7 @@ data Module = Module [String]
             deriving (Show, Eq, Ord, Typeable, Data)
 
 data Specification = Specification { 
-  thisModule :: Module
+  moduleName :: Module
 
   -- | A map of other xdr files that have been imported.  Empty if the
   -- 'Data.XDR.Parser.Imports' language option was not enabled.

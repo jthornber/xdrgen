@@ -25,8 +25,6 @@ import Data.XDR.PrettyPrintRpc
 
 data Flag = Include String
           | Format String
-          | Header
-          | Source
 
 options :: [OptDescr Flag]
 options = [ Option "I" ["include"] (ReqArg Include "INCLUDE DIR") "directory to search for XDR source files"
@@ -46,20 +44,15 @@ parseOpts args = case getOpt Permute options args of
 
 ----------------------------------------------------------------
 
--- FIXME: second argument should disappear when we introduce modules
--- to the spec.
-type Formatter = [Flag] -> AbsFile -> Specification -> String
+type Formatter = Specification -> String
 
 formatters :: Map String Formatter
-formatters = M.fromList [ ("c-header", (const . const) ppCHeader)
-                        , ("c-impl", (const . const) ppCImpl)
-                        , ("rpc-header", ppRpcHeader')
-                        , ("rpc-impl", ppRpcImpl)
-                        , ("xdr", (const . const) ppXDR)
+formatters = M.fromList [ ("c-header",   ppCHeader)
+                        , ("c-impl",     ppCImpl)
+                        , ("rpc-header", ppRpcHeader)
+                        , ("rpc-impl",   ppRpcSource)
+                        , ("xdr",        ppXDR)
                         ]
-    where
-      ppRpcHeader' _ file = ppRpcHeader file
-      ppRpcImpl _ file    = ppRpcSource file
 
 processFile :: [Flag] -> AbsDir -> AbsFile -> IO (Either [ParseError] Specification)
 processFile flags cwd file = parseFile options file
@@ -67,9 +60,9 @@ processFile flags cwd file = parseFile options file
       options = [ Imports [mkAbsPath cwd i | Include i <- flags]
                 ]
 
-runFormatter :: Formatter -> [Flag] -> AbsFile -> Either [ParseError] Specification -> IO ()
-runFormatter _ _ _ (Left errs) = die (unlines . map show $ errs)
-runFormatter f flags mfile (Right spec) = putStrLn . f flags mfile $ spec
+runFormatter :: Formatter -> Either [ParseError] Specification -> IO ()
+runFormatter _ (Left errs)  = die (unlines . map show $ errs)
+runFormatter f (Right spec) = putStrLn . f $ spec
 
 main :: IO ()
 main = do
@@ -81,7 +74,7 @@ main = do
     Just formatter -> do
          cwd <- asAbsDir <$> getWorkingDirectory
          forM_ (map (mkAbsPath cwd) files) $ \file ->
-             processFile flags cwd file >>= runFormatter formatter flags file
+             processFile flags cwd file >>= runFormatter formatter
 
 withDefault :: a -> [a] -> a
 withDefault x []    = x
