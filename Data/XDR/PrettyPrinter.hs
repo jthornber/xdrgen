@@ -21,8 +21,8 @@ braces ds = nest indent (lbrace <$> vcat ds) <$> rbrace
 
 -- | Pretty print an AST back to XDR format.  FIXME: The first
 --   argument is ignored and will be disappearing soon.
-ppXDR :: Maybe AbsFile -> Specification -> String
-ppXDR _ = show . ppSpec
+ppXDR :: Specification -> String
+ppXDR = show . ppSpec
 
 -- | FIXME: print the imports
 ppSpec :: Specification -> Doc

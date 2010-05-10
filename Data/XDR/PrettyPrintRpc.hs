@@ -235,14 +235,14 @@ ppType (TStruct sd) = error "unexpected struct"
 ppType (TUnion ud) = error "unexpected union"
 ppType (TTypedef n) = text n
 
-ppInclude :: Maybe AbsFile -> Doc
+ppInclude :: AbsFile -> Doc
 ppInclude file =
-    text "#include" <+> text (maybe "<rpc/xdr.h>" f file)
+    text "#include" <+> text (f file)
   where
     f s = "\"" ++ (getPathString . takeBaseName $ s) ++ ".h\""
 
 -- | Pretty print a C header for use with the sun rpc library.
-ppRpcHeader :: Maybe AbsFile -> Specification -> String
+ppRpcHeader :: AbsFile -> Specification -> String
 ppRpcHeader file spec =
     show $ header <$> ppSpec spec <$> ppFuncs spec <$> footer
   where
@@ -250,7 +250,7 @@ ppRpcHeader file spec =
                    text "#define" <+> compileGuard,
                    text "#include <rpc/xdr.h>"]
     footer = text "#endif /*" <+> compileGuard <+> text "*/"
-    compileGuard = fileGuard file
+    compileGuard = fileGuard (Just file)
 
     ppSpec (Specification _ defs) =
         f defs
@@ -299,7 +299,7 @@ ppRpcHeader file spec =
         f (Typedef n ti) = ppFuncSig n ti <> semi
 
 -- | Pretty print a C implementation for use with the sun rpc library.
-ppRpcSource :: Maybe AbsFile -> Specification -> String
+ppRpcSource :: AbsFile -> Specification -> String
 ppRpcSource file spec = show $ ppInclude file <$> ppSpec spec
   where
     ppSpec (Specification _ defs) =
