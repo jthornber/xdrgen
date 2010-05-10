@@ -36,9 +36,9 @@ block :: [String] -> Doc
 block = foldr ((<$>) . text) empty
 
 -- | Generate a standalone C header for marshalling the types in the
---   XDR specification.  First argument ignored.
-ppCHeader :: Maybe AbsFile -> Specification -> String
-ppCHeader _ spec = show $ header <--> ppSpec spec <--> ppFuncs spec <--> footer
+--   XDR specification.
+ppCHeader :: Specification -> String
+ppCHeader spec = show $ header <--> ppSpec spec <--> ppFuncs spec <--> footer
     where
       header = vcat [ text "#ifndef" <+> compileGuard
                     , text "#define" <+> compileGuard
@@ -112,9 +112,9 @@ ppCHeader _ spec = show $ header <--> ppSpec spec <--> ppFuncs spec <--> footer
                        text (n ++ " *XDR_unpack_" ++ n ++ "(struct unpacker *u, struct xdr_thunk *release);")
 
 -- | Generate a standalone C implementation for marshalling the types in the
---   XDR specification.  First argument ignored.
-ppCImpl :: Maybe AbsFile -> Specification -> String
-ppCImpl _ spec = show $ foldr (<-->) empty [cIncludes, poolCode, packerCode, unpackerCode, basicTypeMarshalling]
+--   XDR specification.
+ppCImpl :: Specification -> String
+ppCImpl spec = show $ foldr (<-->) empty [cIncludes, poolCode, packerCode, unpackerCode, basicTypeMarshalling]
 
 (<-->) :: Doc -> Doc -> Doc
 b <--> e = vcat [ b

@@ -4,6 +4,8 @@ import Control.Applicative
 import Control.Monad
 import qualified Data.ByteString as B
 import Data.List
+import Data.Map (Map)
+import qualified Data.Map as M
 import Data.Maybe
 import Prelude hiding (FilePath)
 import System.Console.GetOpt
@@ -22,7 +24,6 @@ import Data.XDR.PrettyPrintRpc
 ----------------------------------------------------------------
 
 data Flag = Include String
-          | Define String Integer
           | Format String
           | Header
           | Source
@@ -30,92 +31,65 @@ data Flag = Include String
 options :: [OptDescr Flag]
 options = [ Option "I" ["include"] (ReqArg Include "INCLUDE DIR") "directory to search for XDR source files"
           , Option "f" ["format"] (ReqArg Format "FORMAT") "output format"
-          , Option "h" ["header"] (NoArg Header) "generate header file"
-          , Option "c" ["source"] (NoArg Source) "generate source file"
           ]
 
+header :: String
 header = "usage: xdrgen [option...] <file...>"
+
+usage :: String
 usage = usageInfo header options
+
+parseOpts :: [String] -> IO ([Flag], [String])
+parseOpts args = case getOpt Permute options args of
+                   (flags, files, []) -> return (flags, files)
+                   (_, _, errs)       -> die $ concat errs ++ usage
 
 ----------------------------------------------------------------
 
-data Opts = Opts {
-      optFormat :: String,
-      optHeader :: Bool,
-      optSource :: Bool
-    }
+-- FIXME: second argument should disappear when we introduce modules
+-- to the spec.
+type Formatter = [Flag] -> AbsFile -> Specification -> String
 
-data Printer = Printer {
-      ppFormat :: String,
-      ppHeader :: Maybe AbsFile -> Specification -> String,
-      ppSource :: Maybe AbsFile -> Specification -> String
-    }
+formatters :: Map String Formatter
+formatters = M.fromList [ ("c-header", (const . const) ppCHeader)
+                        , ("c-impl", (const . const) ppCImpl)
+                        , ("rpc-header", ppRpcHeader')
+                        , ("rpc-impl", ppRpcImpl)
+                        , ("xdr", (const . const) ppXDR)
+                        ]
+    where
+      ppRpcHeader' _ file = ppRpcHeader file
+      ppRpcImpl _ file    = ppRpcSource file
 
-printers :: [Printer]
-printers = [Printer "c" ppCHeader ppCImpl,
-            Printer "rpc" ppRpcHeader ppRpcSource,
-            Printer "xdr" ppXDR ppXDR]
+processFile :: [Flag] -> AbsDir -> AbsFile -> IO (Either [ParseError] Specification)
+processFile flags cwd file = parseFile options file
+    where
+      options = [ Imports [mkAbsPath cwd i | Include i <- flags]
+                ]
+
+runFormatter :: Formatter -> [Flag] -> AbsFile -> Either [ParseError] Specification -> IO ()
+runFormatter _ _ _ (Left errs) = die (unlines . map show $ errs)
+runFormatter f flags mfile (Right spec) = putStrLn . f flags mfile $ spec
+
+main :: IO ()
+main = do
+  (flags, files) <- parseOpts =<< getArgs
+
+  let format = withDefault "xdr" [f | Format f <- flags]
+  case M.lookup format formatters of
+    Nothing        -> die "can't find formatter"
+    Just formatter -> do
+         cwd <- asAbsDir <$> getWorkingDirectory
+         forM_ (map (mkAbsPath cwd) files) $ \file ->
+             processFile flags cwd file >>= runFormatter formatter flags file
+
+withDefault :: a -> [a] -> a
+withDefault x []    = x
+withDefault _ (x:_) = x
 
 die :: String -> IO a
 die s = do
     hPutStrLn stderr s
     exitFailure
 
-getPrinter :: String -> Maybe Printer
-getPrinter name = find ((==name) . ppFormat) printers
-
-showResult :: Opts -> Maybe AbsFile -> Either [ParseError] Specification -> IO ()
-showResult opts file (Left errs) = die (unlines . map show $ errs)
-
-showResult opts file (Right spec) = maybe err f (getPrinter name)
-  where
-    err = die $ "invalid format `" ++ name ++ "'\n" ++ usage
-    f p = do
-        when (optHeader opts)
-          (putStrLn $ ppHeader p file spec)
-        when (optSource opts)
-          (putStrLn $ ppSource p file spec)
-    name = optFormat opts
-
-parseOpts :: [String] -> IO ([Opts -> Opts], [String])
-parseOpts args =
-    case getOpt RequireOrder options args of
-      (opts, files, []) -> return (opts, files)
-      (_, _, errs) -> die (concat errs ++ usage)
-
-defaultOpts :: Opts
-defaultOpts = Opts {
-              optFormat = "c",
-              optHeader = False,
-              optSource = False
-            }
-
-processOpts :: [Opts -> Opts] -> Opts
-processOpts [] = defaultOpts
-processOpts opts = foldl (flip ($)) defaultOpts opts
-
-defines :: [(String, Integer)]
-defines = [("FALSE", 0), ("TRUE", 1)]
-
-processFile :: Opts -> AbsFile -> IO ()
-processFile opts file = parseFile options file >>=
-                        showResult opts (Just file)
-    where
-      options = [ Defines defines
-                , Imports [asAbsDir "/home/ejt/work/xdrgen/tests"]
-                ]
-
-processFiles :: Opts -> [AbsFile] -> IO ()
-processFiles opts [] = do
-  txt <- B.getContents
-  let ast = parseString [Defines defines] txt "<stdin>"
-  showResult opts Nothing ast
-processFiles opts files = forM_ files (processFile opts)
-
-main :: IO ()
-main = do
-  cwd <- asAbsDir <$> getWorkingDirectory
-  args <- getArgs
-  (optList, files) <- parseOpts args
-  let opts = processOpts optList
-  processFiles opts . map (mkAbsPath cwd) $ files
+----------------------------------------------------------------
