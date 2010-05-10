@@ -4,8 +4,8 @@ module Data.XDR.PathUtils
 
 
 import Prelude hiding (FilePath)
+import System.Directory
 import System.Path
-import System.Posix.Files
 
 pathLookup :: [AbsDir] -> RelFile -> IO (Maybe AbsFile)
 pathLookup [] rf = return Nothing
@@ -15,5 +15,5 @@ pathLookup (include:includes) rf = do
   if b then return $ Just af else pathLookup includes rf
   
 fileExist' :: (AbsRelClass ar) => Path ar fd -> IO Bool
-fileExist' = fileExist . getPathString
+fileExist' = doesFileExist . getPathString
 

@@ -10,9 +10,9 @@ Synopsis:       XDR utilities
 Build-Type:     Simple
 
 Executable xdrgen
-  Build-Depends: base >= 4.0, parsec >= 3, syb, containers, wl-pprint, typehash, pureMD5, bytestring, pathtype, unix, mtl
+  Build-Depends: base >= 4.0, parsec >= 3, syb, containers, directory, wl-pprint, typehash, pureMD5, bytestring, pathtype, mtl
   Main-Is: Main.hs
 
 Library
-  Build-Depends:     base >= 4.0, parsec >= 3, syb, containers, wl-pprint, typehash, pureMD5, bytestring, pathtype, unix, mtl
+  Build-Depends:     base >= 4.0, parsec >= 3, syb, containers, directory, wl-pprint, typehash, pureMD5, bytestring, pathtype, mtl
   Exposed-modules:   Data.XDR

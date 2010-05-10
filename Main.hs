@@ -9,11 +9,12 @@ import qualified Data.Map as M
 import Data.Maybe
 import Prelude hiding (FilePath)
 import System.Console.GetOpt
+import System.Directory
 import System.Environment
 import System.Exit
 import System.IO hiding (FilePath)
 import System.Path
-import System.Posix.Directory
+import System.Directory
 
 import Data.XDR.AST
 import Data.XDR.Parser
@@ -72,7 +73,7 @@ main = do
   case M.lookup format formatters of
     Nothing        -> die "can't find formatter"
     Just formatter -> do
-         cwd <- asAbsDir <$> getWorkingDirectory
+         cwd <- asAbsDir <$> getCurrentDirectory
          forM_ (map (mkAbsPath cwd) files) $ \file ->
              processFile flags cwd file >>= runFormatter formatter
 
