@@ -252,7 +252,7 @@ ppRpcHeader file spec =
     footer = text "#endif /*" <+> compileGuard <+> text "*/"
     compileGuard = fileGuard (Just file)
 
-    ppSpec (Specification _ defs) =
+    ppSpec (Specification _ _ defs) =
         f defs
       where
         f = vcat . punctuate linebreak . map ppDef
@@ -293,7 +293,7 @@ ppRpcHeader file spec =
         ubody = maybeSemiBraces $ foldr ((:) . ppMaybeDecl . snd) [def] cases
         def = mDefault >>= ppMaybeDecl
 
-    ppFuncs (Specification _ defs) =
+    ppFuncs (Specification _ _ defs) =
         vcat . map f $ getTypedefs defs
       where
         f (Typedef n ti) = ppFuncSig n ti <> semi
@@ -302,7 +302,7 @@ ppRpcHeader file spec =
 ppRpcSource :: AbsFile -> Specification -> String
 ppRpcSource file spec = show $ ppInclude file <$> ppSpec spec
   where
-    ppSpec (Specification _ defs) =
+    ppSpec (Specification _ _ defs) =
         f defs
       where
         f = vcat . punctuate linebreak . map ppTypedef . getTypedefs

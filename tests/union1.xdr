@@ -1,3 +1,5 @@
+module union1;
+
 enum Colour {
      RED = 1,
      BLUE = 2,

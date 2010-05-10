@@ -1,4 +1,6 @@
-import "struct1.xdr";
+module import1;
+
+import struct1;
 
 struct bar {
        A x;

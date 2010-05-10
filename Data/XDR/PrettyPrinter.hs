@@ -26,7 +26,7 @@ ppXDR = show . ppSpec
 
 -- | FIXME: print the imports
 ppSpec :: Specification -> Doc
-ppSpec (Specification _ defs) = vcat . punctuate linebreak . map ppDef $ defs
+ppSpec (Specification _ _ defs) = vcat . punctuate linebreak . map ppDef $ defs
 
 ppDef :: Definition -> Doc
 ppDef (DefTypedef td) = ppTypedef td

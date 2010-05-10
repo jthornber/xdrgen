@@ -1,3 +1,5 @@
+module struct1;
+
 struct A {
        int n;
 };
