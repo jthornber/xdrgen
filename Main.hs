@@ -14,12 +14,12 @@ import System.Environment
 import System.Exit
 import System.IO hiding (FilePath)
 import System.Path
-import System.Directory
 
 import Data.XDR.AST
 import Data.XDR.Parser
 import Data.XDR.PrettyPrinter
 import Data.XDR.PrettyPrintC
+import Data.XDR.PrettyPrintJava
 import Data.XDR.PrettyPrintRpc
 
 ----------------------------------------------------------------
@@ -50,8 +50,9 @@ type Formatter = Specification -> String
 formatters :: Map String Formatter
 formatters = M.fromList [ ("c-header",   ppCHeader)
                         , ("c-impl",     ppCImpl)
+                        , ("java",       ppJava)
                         , ("rpc-header", ppRpcHeader)
-                        , ("rpc-impl",   ppRpcSource)
+                        , ("rpc-impl",   ppRpcImpl)
                         , ("xdr",        ppXDR)
                         ]
 
@@ -59,6 +60,8 @@ processFile :: [Flag] -> AbsDir -> AbsFile -> IO (Either [ParseError] Specificat
 processFile flags cwd file = parseFile options file
     where
       options = [ Imports [mkAbsPath cwd i | Include i <- flags]
+                -- 3.4 Boolean
+                , Defines [("FALSE", 0), ("TRUE", 1)]
                 ]
 
 runFormatter :: Formatter -> Either [ParseError] Specification -> IO ()

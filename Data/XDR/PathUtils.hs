@@ -5,7 +5,7 @@ module Data.XDR.PathUtils
 
 
 import System.Directory
-import System.FilePath (hasDrive)
+import System.FilePath as FP (hasDrive, normalise)
 import System.Path
 
 pathLookup :: [AbsDir] -> RelFile -> IO (Maybe AbsFile)
@@ -18,9 +18,8 @@ pathLookup (include:includes) rf = do
 fileExist' :: (AbsRelClass ar) => Path ar fd -> IO Bool
 fileExist' = doesFileExist . getPathString'
 
-
 getPathString' :: (AbsRelClass ar) => Path ar fd -> String
-getPathString' = normaliseDrive . getPathString
+getPathString' = FP.normalise . normaliseDrive . getPathString
 
 normaliseDrive :: String -> String
 normaliseDrive s@('/':xs) =
