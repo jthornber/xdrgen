@@ -52,8 +52,8 @@ typeName [] = []
 typeName (x:xs) = toUpper x : camelCase xs
 
 topName :: Module -> String
-topName (Module elements) =
-    typeName $ last elements
+topName (Module elems) =
+    typeName $ last elems
 
 upperName :: String -> String
 upperName = map toUpper
@@ -229,15 +229,25 @@ ppVarCodec c =
 -- Java
 
 ppMaybePackage :: Module -> Maybe Doc
-ppMaybePackage (Module elements) =
-    if null xs then Nothing
-    else Just $ kPackage <+> f xs <> semi
+ppMaybePackage (Module elems) =
+    if null ps then Nothing
+    else Just $ kPackage <+> f ps <> semi
   where
     f = text . concat . intersperse "."
-    xs = init elements
+    ps = init elems
 
-ppImports :: Doc
-ppImports = block ["import java.nio.ByteBuffer"]
+ppImports :: [Module] -> Doc
+ppImports =
+    (block [ "import java.nio.ByteBuffer"
+           , "import org.openxdr.*"
+           ] <$>) . vcat . map ppImport
+
+ppImport :: Module -> Doc
+ppImport m@(Module elems) =
+    kImport <+> kStatic <+> f (ps ++ [topName m, "*"]) <> semi
+  where
+    f = text . concat . intersperse "."
+    ps = init elems
 
 ppClass :: String -> [Doc] -> Doc
 ppClass n =
@@ -391,7 +401,8 @@ ppGetterImpl (n, jt) =
 
 ppJava :: Specification -> String
 ppJava spec =
-    show . vcat $ maybePush (ppMaybePackage m) [ppImports, body]
+    show . vcat $ maybePush (ppMaybePackage m)
+             [ppImports . M.keys $ imports spec, body]
   where
     body = kPublic <+> kFinal <+> ppClass tn (ppSpec spec)
     tn = topName m
