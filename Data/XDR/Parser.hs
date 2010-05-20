@@ -217,7 +217,7 @@ enumDetail = setNextEnum 0 *> braces body
         setState $ ctxt { nextEnum = succ v }
         return v
 
-      mkElem n Nothing = incNextEnum >>= insertConst n . ConstLit
+      mkElem n Nothing = incNextEnum >>= insertConst n . ConstEnumRef n . ConstLit
       mkElem n (Just e) =
         let v = evalConstPrim e in (setNextEnum (v + 1)) *> insertConst n (ConstEnumRef n e)
 

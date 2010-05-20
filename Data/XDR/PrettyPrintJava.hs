@@ -418,15 +418,18 @@ ppJava spec =
                     <+> ppClass ("xdr_" ++ n)
                             [ppUnionCases m ud, ppPublicCodec td cd]
       where
-        td = jType $ lookupPair m p
-        cd = ppCodecPair m p
-        p = DeclPair n d
+        td = jType $ lookupPair m dp
+        cd = ppCodecPair m dp
+        dp = DeclPair n d
 
     ppDecl m n d =
         ppSimpleCodec m $ DeclPair n d
 
+    -- | Enumerated values must be visible in the top-level namespace, so they
+    -- are not enclosed in a separate class or interface.
+
     ppEnumDetail n (EnumDetail pairs) =
-        kPublic <+> ppIface n (ppEnumBody pairs)
+        vcat $ ppEnumBody pairs
 
     ppStructDetail m n (StructDetail decls) =
         ppIface n (ppIfaceBody jts)
