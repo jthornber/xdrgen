@@ -53,7 +53,7 @@ typeName (x:xs) = toUpper x : camelCase xs
 
 topName :: Module -> String
 topName (Module elems) =
-    typeName $ last elems
+    last elems
 
 upperName :: String -> String
 upperName = map toUpper
@@ -239,6 +239,7 @@ ppMaybePackage (Module elems) =
 ppImports :: [Module] -> Doc
 ppImports =
     (block [ "import java.nio.ByteBuffer"
+           , "import java.nio.charset.CharacterCodingException"
            , "import org.openxdr.*"
            ] <$>) . vcat . map ppImport
 
@@ -253,14 +254,11 @@ ppClass :: String -> [Doc] -> Doc
 ppClass n =
     (lead <+>) . braces . (ppPrivateCons n :)
   where
-    lead = kClass <+> text tn
-    tn = typeName n
+    lead = kClass <+> text n
 
 ppPrivateCons :: String -> Doc
 ppPrivateCons n =
-    kPrivate <+> text tn <> lrparen <+> lbrace <$> rbrace
-  where
-    tn = typeName n
+    kPrivate <+> text n <> lrparen <+> lbrace <$> rbrace
 
 ppConstDef n d =
     kPublic <+> kStatic <+> kFinal <+> kInt <+> text n' <+> equals
@@ -271,7 +269,7 @@ ppConstDef n d =
 ppSimpleCodec :: DeclMap -> DeclPair -> Doc
 ppSimpleCodec m p@(DeclPair n d) =
     kPublic <+> kStatic <+> kFinal
-                <+> ppClass ("xdr_" ++ n) [ppPublicCodec td cd]
+                <+> ppClass ("Xdr" ++ typeName n) [ppPublicCodec td cd]
   where
     td = jType $ lookupPair m p
     cd = ppCodecPair m p
@@ -426,7 +424,7 @@ ppJava spec =
         ppStructDetail m n sd
     ppDecl m n d@(DeclSimple (TUnion ud)) =
         kPublic <+> kStatic <+> kFinal
-                    <+> ppClass ("xdr_" ++ n)
+                    <+> ppClass ("Xdr" ++ typeName n)
                             [ppUnionCases m ud, ppPublicCodec td cd]
       where
         td = jType $ lookupPair m dp
@@ -445,8 +443,8 @@ ppJava spec =
     ppStructDetail m n (StructDetail decls) =
         ppIface n (ppIfaceBody jts)
                     <$> kPublic <+> kStatic <+> kFinal
-                    <+> ppClass ("xdr_" ++ n) (ppAnonCodec n ([enc, dec])
-                                               : ppCodecDecls m dps)
+                    <+> ppClass ("Xdr" ++ typeName n)
+                            (ppAnonCodec n ([enc, dec]) : ppCodecDecls m dps)
       where
         enc = ppEncode n (ppEncodeVars jts)
         dec = ppDecode n (ppDecodeVars jts
