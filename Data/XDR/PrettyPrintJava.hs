@@ -35,9 +35,6 @@ braces ds = nest indent (lbrace <$> vcat ds) <$> rbrace
 semiBraces :: [Doc] -> Doc
 semiBraces = braces . map (<> semi)
 
-block :: [String] -> Doc
-block = foldr ((<$>) . (<> semi) . text) empty
-
 maybePush :: Maybe a -> [a] -> [a]
 maybePush =
     maybe id (:)
@@ -174,11 +171,15 @@ lookupType m n (TUnion (UnionDetail sel _ _)) =
     jt = lookupPair m `fmap` declToPair sel
 
 lookupType m _ (TTypedef n) =
-    JType td td cp
+    JType td ud cp
   where
     td = maybe (text $ typeName n) jType jt
+    ud = maybe (text $ typeName n) jUnbox jt
     cp = maybe ppConstPrim jConstPrim jt
     jt = lookupPair m `fmap` M.lookup n m
+
+kByteBuffer = text "java.nio.ByteBuffer"
+kCharacterCodingException = text "java.nio.charset.CharacterCodingException"
 
 ppCodecPair :: DeclMap -> DeclPair -> Doc
 ppCodecPair m (DeclPair n (DeclSimple t)) =
@@ -238,17 +239,13 @@ ppMaybePackage (Module elems) =
 
 ppImports :: [Module] -> Doc
 ppImports =
-    (block [ "import java.nio.ByteBuffer"
-           , "import java.nio.charset.CharacterCodingException"
-           , "import org.openxdr.*"
-           ] <$>) . vcat . map ppImport
+    (text "import org.openxdr.*" <> semi <$>) . vcat . map ppImport
 
 ppImport :: Module -> Doc
 ppImport m@(Module elems) =
-    kImport <+> kStatic <+> f (ps ++ [topName m, "*"]) <> semi
+    kImport <+> kStatic <+> f elems <> text ".*" <> semi
   where
     f = text . concat . intersperse "."
-    ps = init elems
 
 ppClass :: String -> [Doc] -> Doc
 ppClass n =
@@ -314,7 +311,7 @@ ppGetterName n =
 
 ppGetterDecl :: (String, JType) -> Doc
 ppGetterDecl (n, jt) =
-    jType jt <+> ppGetterName n <> lrparen <> semi
+    jUnbox jt <+> ppGetterName n <> lrparen <> semi
 
 ppAnonCodec :: String -> [Doc] -> Doc
 ppAnonCodec n =
@@ -340,8 +337,8 @@ ppEncode n =
     (nest indent lead <+>) . semiBraces
   where
     lead = kPublic <+> kFinal <+> kVoid <+> text "encode"
-           <> tupled [text "ByteBuffer buf", text (tn ++ " val")]
-           </> kThrows <+> text "CharacterCodingException"
+           <> tupled [kByteBuffer <+> text "buf", text (tn ++ " val")]
+           </> kThrows <+> kCharacterCodingException
     tn = typeName n
 
 ppDecode :: String -> [Doc] -> Doc
@@ -349,8 +346,8 @@ ppDecode n =
     (nest indent lead <+>) . semiBraces
   where
     lead = kPublic <+> kFinal <+> text tn <+> text "decode"
-           <> tupled [text "ByteBuffer buf"]
-           </> kThrows <+> text "CharacterCodingException"
+           <> tupled [kByteBuffer <+> text "buf"]
+           </> kThrows <+> kCharacterCodingException
     tn = typeName n
 
 ppEncodeVars :: [(String, JType)] -> [Doc]
@@ -371,7 +368,7 @@ ppDecodeVars =
 
 ppDecodeVar :: (String, JType) -> Doc
 ppDecodeVar (n, jt) =
-    kFinal <+> jType jt <+> text (cn ++ "_") <+> equals
+    kFinal <+> jUnbox jt <+> text (cn ++ "_") <+> equals
                <+> text un <> text "_CODEC.decode" <> tupled [text "buf"]
   where
     cn = camelCase n
@@ -390,7 +387,7 @@ ppInnerBody =
 
 ppGetterImpl :: (String, JType) -> Doc
 ppGetterImpl (n, jt) =
-    kPublic <+> kFinal <+> jType jt
+    kPublic <+> kFinal <+> jUnbox jt
                 <+> ppGetterName n <> lrparen
                 <+> nest indent (lbrace <$> body) <$> rbrace
   where
@@ -441,7 +438,7 @@ ppJava spec =
         vcat $ ppEnumBody pairs
 
     ppStructDetail m n (StructDetail decls) =
-        ppIface n (ppIfaceBody jts)
+        kPublic <+> ppIface n (ppIfaceBody jts)
                     <$> kPublic <+> kStatic <+> kFinal
                     <+> ppClass ("Xdr" ++ typeName n)
                             (ppAnonCodec n ([enc, dec]) : ppCodecDecls m dps)
