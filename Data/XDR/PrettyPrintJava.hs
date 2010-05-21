@@ -202,9 +202,9 @@ ppCodecPair m (DeclPair n (DeclPointer t)) =
 
 ppCodecType :: DeclMap -> String -> Type -> Doc
 ppCodecType _ _ TInt = text "XdrInt.CODEC"
-ppCodecType _ _ TUInt = text "XdrInt.CODEC"
+ppCodecType _ _ TUInt = text "XdrUInt.CODEC"
 ppCodecType _ _ THyper = text "XdrHyper.CODEC"
-ppCodecType _ _ TUHyper = text "XdrHyper.CODEC"
+ppCodecType _ _ TUHyper = text "XdrUHyper.CODEC"
 ppCodecType _ _ TFloat = text "XdrFloat.CODEC"
 ppCodecType _ _ TDouble = text "XdrDouble.CODEC"
 ppCodecType _ _ TQuadruple = error "not supported"
