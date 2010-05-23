@@ -1,14 +1,16 @@
 -- | FIXME: Mark describe sun rpc/openxdr.
 
 module Data.XDR.PrettyPrintRpc
-    (ppRpcHeader,
-     ppRpcSource) where
+    ( ppRpcHeader
+    , ppRpcImpl
+    ) where
 
 import Control.Monad
 import Data.Char
 import Data.List
 import Data.Maybe
 import Data.XDR.AST
+import Data.XDR.PPKeywords
 import Data.XDR.PPUtils
 import System.Path hiding ((</>))
 import Text.PrettyPrint.Leijen as PP hiding (semiBraces, braces, indent)
@@ -63,23 +65,23 @@ ppDefaultConstant d =
 
 ppSizeOf :: Type -> Doc
 ppSizeOf t =
-    text "sizeof" <> parens (ppType t)
+    kSizeof <> parens (ppType t)
 
 ppIfDecode :: Doc
 ppIfDecode =
-    text "if" <+> parens (text "XDR_DECODE == xdrs->x_op")
+    kIf <+> parens (text "XDR_DECODE == xdrs->x_op")
 
 ppIfFalse :: Doc -> Doc
 ppIfFalse d =
-    text "if" <+> parens (char '!' <> d </> text "&& XDR_FREE != xdrs->x_op")
+    kIf <+> parens (char '!' <> d </> text "&& XDR_FREE != xdrs->x_op")
 
 ppReturn :: String -> Doc
 ppReturn =
-    (text "return" <+>) . text
+    (kReturn <+>) . text
 
 ppGoto :: (Show a) => a -> Doc
 ppGoto n =
-    text "goto" <+> text ("xfree" ++ show n)
+    kGoto <+> text ("xfree" ++ show n)
 
 ppIfFalseReturn :: Doc -> Doc
 ppIfFalseReturn d =
@@ -207,29 +209,29 @@ ppMaybeDecl (Decl n (DeclArray t c)) =
 ppMaybeDecl (Decl n (DeclVarArray t mc)) =
     Just $ ppVarStruct n t
 ppMaybeDecl (Decl n (DeclOpaque c)) =
-    Just $ text "char" <+> text n <> (brackets . ppConstExpr $ c)
+    Just $ kChar <+> text n <> (brackets . ppConstExpr $ c)
 ppMaybeDecl (Decl n (DeclVarOpaque mc)) =
     Just $ ppVarStruct n (TTypedef "char")
 ppMaybeDecl (Decl n (DeclString mc)) =
-    Just $ text "char *" <> text n
+    Just $ kChar <+> char '*' <> text n
 ppMaybeDecl (Decl n (DeclPointer t)) =
-    Just $ ppType t <> text "*" <+> text n
+    Just $ ppType t <+> char '*' <+> text n
 ppMaybeDecl DeclVoid =
     Nothing
 
 ppVarStruct :: String -> Type -> Doc
 ppVarStruct n t =
-    text "struct" <+> semiBraces [text "u_int" <+> text "len",
-                                  ppType t <+> text "*val"]
-         <+> text n
+    kStruct <+> semiBraces [text "u_int" <+> text "len",
+                            ppType t <+> text "*val"]
+                <+> text n
 
 ppType :: Type -> Doc
-ppType TInt = text "int"
+ppType TInt = kInt
 ppType TUInt = text "u_int"
 ppType THyper = text "quad_t"
 ppType TUHyper = text "u_quad_t"
-ppType TFloat = text "float"
-ppType TDouble = text "double"
+ppType TFloat = kFloat
+ppType TDouble = kDouble
 ppType TQuadruple = error "not supported"
 ppType TBool = text "bool_t"
 ppType (TEnum (EnumDetail ed)) = text "enum" <+> ppEnumBody ed
@@ -266,7 +268,7 @@ ppRpcHeader spec =
         text "#define" <+> text n <+> ppConstExpr c
 
     ppTypedef (Typedef n ti) =
-        text "typedef" <+> ppTypedefInternal n ti
+        kTypedef <+> ppTypedefInternal n ti
 
     ppTypedefInternal n (DefSimple (DeclSimple (TStruct sd))) =
         ppStructDetail n sd
@@ -275,7 +277,7 @@ ppRpcHeader spec =
     ppTypedefInternal n (DefSimple di) =
         maybeEmpty $ ppMaybeDecl (Decl n di)
     ppTypedefInternal n (DefEnum (EnumDetail ed)) =
-        text "enum" <+> text n <+> ppEnumBody ed <+> text n
+        kEnum <+> text n <+> ppEnumBody ed <+> text n
     ppTypedefInternal n (DefStruct sd) =
         ppStructDetail n sd
     ppTypedefInternal n (DefUnion ud) =
@@ -284,16 +286,16 @@ ppRpcHeader spec =
     ppStructDetail n (StructDetail decls) =
         sn <+> text n <> semi <$> sn <+> ppStructBody decls
       where
-        sn = text "struct" <+> text n
+        sn = kStruct <+> text n
 
     ppUnionDetail n (UnionDetail selector cases mDefault) =
         sn <+> text n <> semi <$> sn <+> body
       where
-        sn = text "struct" <+> text n
+        sn = kStruct <+> text n
         body = maybeSemiBraces [ppMaybeDecl selector,
-                                Just $ text "union" <+> ubody <+> text "u"]
+                                Just $ kUnion <+> ubody <+> text "u"]
         ubody = maybeSemiBraces $ foldr ((:) . ppMaybeDecl . snd) [def] cases
-        def = mDefault >>= ppMaybeDecl
+        def = ppMaybeDecl =<< mDefault
 
     ppFuncs (Specification _ _ defs) =
         vcat . map f $ getTypedefs defs
@@ -301,8 +303,8 @@ ppRpcHeader spec =
         f (Typedef n ti) = ppFuncSig n ti <> semi
 
 -- | Pretty print a C implementation for use with the sun rpc library.
-ppRpcSource :: Specification -> String
-ppRpcSource spec = show $ ppInclude (moduleName spec) <$> ppSpec spec
+ppRpcImpl :: Specification -> String
+ppRpcImpl spec = show $ ppInclude (moduleName spec) <$> ppSpec spec
   where
     ppSpec (Specification _ _ defs) =
         f defs
@@ -387,7 +389,7 @@ ppRpcSource spec = show $ ppInclude (moduleName spec) <$> ppSpec spec
          text "xfree0:" <$> ppReturn "FALSE"]
 
     ppSwitch n cases mDefault =
-        text "switch" <+> (parens . text) ("objp->" ++ n) <+> switchBraces ds
+        kSwitch <+> (parens . text) ("objp->" ++ n) <+> switchBraces ds
       where
         ds = foldr ((:) . nest indent . ppSwitchCase) def cases
         def = liftMaybeToList (nest indent . ppSwitchDefault) mDefault
@@ -395,14 +397,14 @@ ppRpcSource spec = show $ ppInclude (moduleName spec) <$> ppSpec spec
     ppSwitchCase (c, d) =
         enclose l r $ ppSwitchCall d
       where
-        l = text "case" <+> ppConstPrim c <> colon
-        r = line <> text "break"
+        l = kCase <+> ppConstPrim c <> colon
+        r = line <> kBreak
 
     ppSwitchDefault =
         enclose l r . ppSwitchCall
       where
-        l = text "default:"
-        r = line <> text "break"
+        l = kDefault <> char ':'
+        r = line <> kBreak
 
     ppSwitchCall =
         maybe empty f . ppUnionCall "xdrs"
