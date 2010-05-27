@@ -359,18 +359,22 @@ ppAnonCodec n jts =
   where
     head = kPublic <+> kStatic <+> kFinal <+> ct <+> text "CODEC" <+> equals
            </> kNew <+> ct <> lrparen
-    body = ppEncode n jts <$> ppDecode n jts
+    body = ppEncode n jts <$> ppDecode n jts <$> ppSize n jts
     ct = text "Codec" <> langle <> text tn <> rangle
     tn = typeName n
 
 ppEncode :: String -> [(String, JType)] -> Doc
 ppEncode n =
-    (nest indent head <+>) . braces . vcat . ppEncodeVars
+    (nest indent head <+>) . braces . ppEncodeBody
   where
     head = kPublic <+> kFinal <+> kVoid <+> text "encode"
            <> tupled [kByteBuffer <+> text "buf", text (tn ++ " val")]
            </> kThrows <+> kCharacterCodingException
     tn = typeName n
+
+ppEncodeBody :: [(String, JType)] -> Doc
+ppEncodeBody =
+    vcat . ppEncodeVars
 
 ppEncodeVars :: [(String, JType)] -> [Doc]
 ppEncodeVars =
@@ -386,16 +390,16 @@ ppEncodeVar (n, jt) =
 
 ppDecode :: String -> [(String, JType)] -> Doc
 ppDecode n =
-    (nest indent head <+>) . braces . vcat . ppDecodeBody n
+    (nest indent head <+>) . braces . ppDecodeBody n
   where
     head = kPublic <+> kFinal <+> text tn <+> text "decode"
            <> tupled [kByteBuffer <+> text "buf"]
            </> kThrows <+> kCharacterCodingException
     tn = typeName n
 
-ppDecodeBody :: String -> [(String, JType)] -> [Doc]
+ppDecodeBody :: String -> [(String, JType)] -> Doc
 ppDecodeBody n jts =
-    ppDecodeVars jts ++ [ppFactoryCall n jts]
+    (vcat $ ppDecodeVars jts) <$> ppFactoryCall n jts
 
 ppDecodeVars :: [(String, JType)] -> [Doc]
 ppDecodeVars =
@@ -408,6 +412,32 @@ ppDecodeVar (n, jt) =
                <> tupled [text "buf"] <> semi
   where
     cn = camelCase n
+    un = upperName n
+
+ppSize :: String -> [(String, JType)] -> Doc
+ppSize n =
+    (nest indent head <+>) . braces . ppSizeBody
+  where
+    head = kPublic <+> kFinal <+> kInt <+> text "size"
+           <> tupled [text (tn ++ " val")]
+    tn = typeName n
+
+ppSizeBody :: [(String, JType)] -> Doc
+ppSizeBody jts =
+    kInt <+> text "n" <+> equals <+> text "0" <> semi
+              <$> (vcat $ ppSizeVars jts)
+              <$> kReturn <+> text "n" <> semi
+
+ppSizeVars :: [(String, JType)] -> [Doc]
+ppSizeVars =
+    map ppSizeVar
+
+ppSizeVar :: (String, JType) -> Doc
+ppSizeVar (n, jt) =
+    text "n +=" <+> text un <> text "_CODEC.size"
+             <> tupled [text ("val.get" ++ tn) <> lrparen] <> semi
+  where
+    tn = typeName n
     un = upperName n
 
 ppCodecDecls :: DeclMap -> [DeclPair] -> [Doc]
@@ -461,9 +491,9 @@ ppJava spec =
     -- are not enclosed in a separate class or interface.
 
     ppEnumDetail n (EnumDetail pairs) =
-        vcat $ map f pairs
+        vcat $ map (f . snd) pairs
       where
-        f (n, c) = ppConstDef n (text . show $ evalConstPrim c)
+        f (ConstEnumRef n p) = ppConstDef n (ppConstPrim p)
 
     ppStructDetail m n (StructDetail decls) =
         kPublic <+> ppIface tn jts
@@ -479,8 +509,8 @@ ppJava spec =
     ppUnionCases m (UnionDetail sel cases mDef) =
         nest indent head <> semi
       where
-        head = kPrivate <+> kStatic <+> kFinal <+> text "Map" <> langle
-               <> (maybe (text "Integer") jType jt) <> char ','
+        head = kPrivate <+> kStatic <+> kFinal <+> text "java.util.Map"
+               <> langle <> (maybe (text "Integer") jType jt) <> char ','
                <+> text "Codec" <> langle <> char '?' <> rangle <> rangle
                <+> text "CASES" <+> equals </> text "XdrUnion.newCases"
                <> tupled (ppUnionPairs m
