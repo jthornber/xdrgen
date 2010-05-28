@@ -138,7 +138,7 @@ parseImportSpecification defines includes path = do
   where
     path' = getPathString' path
 
-data Context = Context { constTable :: Map String ConstPrim
+data Context = Context { constTable :: Map String ConstExpr
                        , nextEnum :: Integer
                        }
 
@@ -148,27 +148,55 @@ initContext defines = Context (M.fromList . map (second ConstLit) $ defines) 0
 -- type Parser = GenParser Char Context
 type Parser = ParsecT ByteString Context
 
-constPrim :: (Monad m) => Parser m ConstPrim
-constPrim = (ConstLit <$> integer) <|> (findReference =<< identifier)
+constPrim :: (Monad m) => Parser m ConstExpr
+constPrim = (ConstLit <$> integer)
+            <|> (ConstLit <$> boolean)
+            <|> (findReference =<< identifier)
 
-findReference :: (Monad m) => String -> Parser m ConstPrim
+-- 3.4 Boolean
+-- Interpret TRUE and FALSE as const-literals.
+
+boolean :: (Monad m) => Parser m Integer
+boolean = (1 <$ string "TRUE") <|> (0 <$ string "FALSE")
+
+findReference :: (Monad m) => String -> Parser m ConstExpr
 findReference n = do
   c <- getState
   case M.lookup n (constTable c) of
     Nothing -> unexpected $ "unknown constant '" ++ n ++ "'"
-    Just p -> return p
+    Just e -> return . ConstRef . ConstantDef n $ e
+
+-- Operator Precedence:
+-- Unary: + - ~
+-- Multiplicative: * / %
+-- Additive: + -
+-- Shift: << >>
+-- Bitwise AND: &
+-- Bitwise XOR: ^
+-- Bitwise OR: |
 
 constExpr :: (Monad m) => Parser m ConstExpr
 constExpr = buildExpressionParser table term
     where
-      table = [ [ prefix "-" (CEUnExpr NEGATE)
-                , prefix "+" id
+      table = [ [ prefix "+" id
+                , prefix "-" (ConstUnExpr NEG)
+                , prefix "~" (ConstUnExpr NOT)
                 ]
-              , [ binary "*" (CEBinExpr MULT) AssocLeft
-                , binary "/" (CEBinExpr DIV) AssocLeft
+              , [ binary "*" (ConstBinExpr MUL) AssocLeft
+                , binary "/" (ConstBinExpr DIV) AssocLeft
+                , binary "%" (ConstBinExpr MOD) AssocLeft
                 ]
-              , [ binary "+" (CEBinExpr PLUS) AssocLeft
-                , binary "-" (CEBinExpr MINUS) AssocLeft
+              , [ binary "+" (ConstBinExpr ADD) AssocLeft
+                , binary "-" (ConstBinExpr SUB) AssocLeft
+                ]
+              , [ binary "<<" (ConstBinExpr SHL) AssocLeft
+                , binary ">>" (ConstBinExpr SHR) AssocLeft
+                ]
+              , [ binary "&" (ConstBinExpr AND) AssocLeft
+                ]
+              , [ binary "^" (ConstBinExpr XOR) AssocLeft
+                ]
+              , [ binary "|" (ConstBinExpr OR) AssocLeft
                 ]
               ]
 
@@ -176,7 +204,7 @@ constExpr = buildExpressionParser table term
       binary name fun = Infix (mkOp name fun)
       mkOp name fun = reservedOp name *> pure fun
 
-      term = (CEPrim <$> constPrim) <|> parens constExpr
+      term = constPrim <|> parens constExpr
 
 simpleType :: (Monad m) => String -> Type -> Parser m Type
 simpleType keyword t = const t <$> try (reserved keyword)
@@ -204,7 +232,7 @@ enumDetail = setNextEnum 0 *> braces body
       body = EnumDetail <$> commaSep pair
       pair = do
         n <- identifier
-        mc <- optionMaybe (reservedOp "=" *> constPrim)
+        mc <- optionMaybe (reservedOp "=" *> constExpr)
         mkElem n mc
 
       setNextEnum n = do
@@ -217,14 +245,24 @@ enumDetail = setNextEnum 0 *> braces body
         setState $ ctxt { nextEnum = succ v }
         return v
 
-      mkElem n Nothing = incNextEnum >>= insertConst n . ConstEnumRef n . ConstLit
+      mkElem n Nothing = incNextEnum >>= insertConst n . ConstLit
       mkElem n (Just e) =
-        let v = evalConstPrim e in (setNextEnum (v + 1)) *> insertConst n (ConstEnumRef n e)
+        let v = evalConstExpr e in (setNextEnum (v + 1)) *> insertConst n e
 
-      insertConst n v = do
-        ctxt <- getState
-        setState $ ctxt { constTable = M.insert n v (constTable ctxt) }
-        pure (n, v)
+insertConst name e = do
+    ctxt <- getState
+    let table = constTable ctxt
+
+    -- maybe the constant has already been defined ?  We only
+    -- complain if they're trying to give it a different value.
+    case M.lookup name table of
+      Nothing -> insert name e table ctxt
+      Just v' -> unexpected . concat $ [ "multiple definitions for "
+                                       , name
+                                       ]
+    pure $ ConstantDef name e
+  where
+    insert name v table ctxt = setState $ ctxt { constTable = M.insert name v table }
 
 structTypeSpec :: (Monad m) => Parser m Type
 structTypeSpec = TStruct <$> (reserved "struct" *> structDetail)
@@ -245,7 +283,7 @@ unionDetail = UnionDetail <$> switch <*-*> braces ((,) <$> caseStatements <*> de
     where
       switch         = reserved "switch" *> parens declaration
       caseStatements = many1 caseStatement
-      caseStatement  = (,) <$> (reserved "case" *> constPrim <* colon) <*> declaration <* semi
+      caseStatement  = (,) <$> (reserved "case" *> constExpr <* colon) <*> declaration <* semi
       deflt          = optionMaybe (reserved "default" *> colon *> declaration <* semi)
 
 declaration :: (Monad m) => Parser m Decl
@@ -281,23 +319,7 @@ declaration =
       mkPointer t n   = Decl n $ DeclPointer t
 
 constantDef :: (Monad m) => Parser m ConstantDef
-constantDef = ((,) <$> (reserved "const" *> identifier <* reservedOp "=") <*> constExpr) >>= uncurry mkConst
-    where
-      mkConst name e = do
-        ctxt <- getState
-        let table = constTable ctxt
-
-        -- maybe the constant has already been defined ?  We only
-        -- complain if they're trying to give it a different value.
-        case M.lookup name table of
-          Nothing -> insert name (ConstDefRef (ConstantDef name e)) table ctxt
-          Just v' -> unexpected . concat $ [ "multiple definitions for "
-                                           , name
-                                           ]
-
-        pure $ ConstantDef name e
-
-      insert name v table ctxt = setState $ ctxt { constTable = M.insert name v table }
+constantDef = ((,) <$> (reserved "const" *> identifier <* reservedOp "=") <*> constExpr) >>= uncurry insertConst
 
 typeDef :: (Monad m) => Parser m Typedef
 typeDef = choice [ mkSimple <$> (reserved "typedef" *> declaration)
@@ -328,7 +350,7 @@ withInput new p = do
 module' :: (Monad m) => Parser m Module
 module' = Module <$> sepBy1 segment (reservedOp ".")
     where
-      segment = (:) <$> letter <*> many1 (alphaNum <|> char '_')
+      segment = (:) <$> letter <*> many (alphaNum <|> char '_')
 
 moduleStatement :: (Monad m) => Parser m Module
 moduleStatement = reserved "module" *> module' <* semi

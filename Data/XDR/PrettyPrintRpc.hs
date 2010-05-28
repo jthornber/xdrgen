@@ -193,11 +193,11 @@ ppCallPointer xdrs ptr t =
                         ppSizeOf t,
                         text "(xdrproc_t)xdr_" <> ppType t]
 
-ppEnumBody :: [(String, ConstPrim)] -> Doc
+ppEnumBody :: [ConstantDef] -> Doc
 ppEnumBody =
-    braces . punctuate comma . map (f . snd)
+    braces . punctuate comma . map f
   where
-    f (ConstEnumRef n p) = text n <+> text "=" <+> ppConstPrim p
+    f (ConstantDef n c) = text n <+> text "=" <+> ppConstExpr c
 
 ppStructBody :: [Decl] -> Doc
 ppStructBody =
@@ -268,10 +268,10 @@ ppRpcHeader spec =
       where
         f = vcat . punctuate linebreak . map ppDef
 
-    ppDef (DefConstant cd) = ppConstDef cd
+    ppDef (DefConstant cd) = ppConstantDef cd
     ppDef (DefTypedef td) = ppTypedef td <> semi
 
-    ppConstDef (ConstantDef n c) =
+    ppConstantDef (ConstantDef n c) =
         text "#define" <+> text n <+> ppConstExpr c
 
     ppTypedef (Typedef n ti) =
@@ -404,7 +404,7 @@ ppRpcImpl spec = show $ ppInclude (moduleName spec) <$> ppSpec spec
     ppSwitchCase (c, d) =
         enclose l r $ ppSwitchCall d
       where
-        l = kCase <+> ppConstPrim c <> colon
+        l = kCase <+> ppConstExpr c <> colon
         r = line <> kBreak
 
     ppSwitchDefault =
