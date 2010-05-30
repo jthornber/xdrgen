@@ -60,8 +60,7 @@ processFile :: [Flag] -> AbsDir -> AbsFile -> IO (Either [ParseError] Specificat
 processFile flags cwd file = parseFile options file
     where
       options = [ Imports [mkAbsPath cwd i | Include i <- flags]
-                -- 3.4 Boolean
-                , Defines [("FALSE", 0), ("TRUE", 1)]
+                , Defines []
                 ]
 
 runFormatter :: Formatter -> Either [ParseError] Specification -> IO ()

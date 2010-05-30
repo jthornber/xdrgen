@@ -51,10 +51,10 @@ ppCHeader spec = show $ header <--> ppSpec spec <--> ppFuncs spec <--> footer
 
       ppSpec (Specification _ _ defs) = vcat . punctuate linebreak . map ppDef $ defs
 
-      ppDef (DefConstant cd) = ppConstDef cd
+      ppDef (DefConstant cd) = ppConstantDef cd
       ppDef (DefTypedef td) = ppTypedef td
 
-      ppConstDef (ConstantDef n c) = text "#define" <+> text n <+> ppConstExpr c
+      ppConstantDef (ConstantDef n c) = text "#define" <+> text n <+> ppConstExpr c
 
       ppTypedef (Typedef n ti) = text "typedef" <+> ppTypedefInternal n ti <> semi
 
@@ -64,7 +64,7 @@ ppCHeader spec = show $ header <--> ppSpec spec <--> ppFuncs spec <--> footer
       ppTypedefInternal n (DefUnion ud) = text "struct" <+> ppUnionDetail ud <+> text n
 
       ppEnumDetail (EnumDetail xs) = braces . punctuate comma . map ppEnumDef $ xs
-      ppEnumDef (n, c) = text n <+> text "=" <+> ppConstPrim c
+      ppEnumDef (ConstantDef n c) = text n <+> text "=" <+> ppConstExpr c
 
       ppStructDetail (StructDetail decls) = semiBraces . map ppDecl $ decls
 

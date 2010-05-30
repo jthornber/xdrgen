@@ -105,7 +105,7 @@ typedefToDecl (DefUnion ud) = DeclSimple (TUnion ud)
 data JType = JType
     { jType :: Doc
     , jUnbox :: Doc
-    , jConstPrim :: ConstPrim -> Doc
+    , jConstExpr :: ConstExpr -> Doc
     }
 
 lookupPair :: DeclMap -> DeclPair -> JType
@@ -113,29 +113,29 @@ lookupPair m (DeclPair n (DeclSimple t)) =
     lookupType m n t
 
 lookupPair m (DeclPair n (DeclArray t _)) =
-    JType td td ppConstPrim
+    JType td td ppConstExpr
   where
     td = text "Array" <> langle <> jType jt <> rangle
     jt = lookupType m n t
 
 lookupPair m (DeclPair n (DeclVarArray t mc)) =
-    JType td td ppConstPrim
+    JType td td ppConstExpr
   where
     td = text "Array" <> langle <> jType jt <> rangle
     jt = lookupType m n t
 
 lookupPair m (DeclPair n (DeclOpaque c)) =
-    JType td td ppConstPrim
+    JType td td ppConstExpr
   where
     td = text "Opaque"
 
 lookupPair m (DeclPair n (DeclVarOpaque mc)) =
-    JType td td ppConstPrim
+    JType td td ppConstExpr
   where
     td = text "Opaque"
 
 lookupPair m (DeclPair n (DeclString mc)) =
-    JType td td ppConstPrim
+    JType td td ppConstExpr
   where
     td = text "String"
 
@@ -144,25 +144,25 @@ lookupPair m (DeclPair n (DeclPointer t)) =
 
 lookupType :: DeclMap -> String -> Type -> JType
 
-lookupType _ _ TInt = JType (text "Integer") kInt ppConstPrim
-lookupType _ _ TUInt = JType (text "Integer") kInt ppConstPrim
-lookupType _ _ THyper = JType (text "Long") kLong ppConstPrim
-lookupType _ _ TUHyper = JType (text "Long") kLong ppConstPrim
-lookupType _ _ TFloat = JType (text "Float") kFloat ppConstPrim
-lookupType _ _ TDouble = JType (text "Double") kDouble ppConstPrim
+lookupType _ _ TInt = JType (text "Integer") kInt ppConstExpr
+lookupType _ _ TUInt = JType (text "Integer") kInt ppConstExpr
+lookupType _ _ THyper = JType (text "Long") kLong ppConstExpr
+lookupType _ _ TUHyper = JType (text "Long") kLong ppConstExpr
+lookupType _ _ TFloat = JType (text "Float") kFloat ppConstExpr
+lookupType _ _ TDouble = JType (text "Double") kDouble ppConstExpr
 lookupType _ _ TQuadruple = error "not supported"
 lookupType _ _ TBool =
     JType (text "Boolean") kBoolean f
   where
-    f = (text "0 !=" <+>) . ppConstPrim
-lookupType _ _ (TEnum _) = JType (text "Integer") kInt ppConstPrim
+    f = (text "0 !=" <+>) . ppConstExpr
+lookupType _ _ (TEnum _) = JType (text "Integer") kInt ppConstExpr
 lookupType _ n (TStruct _) =
-    JType td td ppConstPrim
+    JType td td ppConstExpr
   where
     td = text $ typeName n
 
 lookupType m n (TUnion (UnionDetail sel _ _)) =
-    JType td td ppConstPrim
+    JType td td ppConstExpr
   where
     td = text "Union" <> langle <> maybe (text "Integer") jType jt <> rangle
     jt = lookupPair m `fmap` declToPair sel
@@ -172,7 +172,7 @@ lookupType m _ (TTypedef n) =
   where
     td = maybe td' jType jt
     ud = maybe td' jUnbox jt
-    cp = maybe ppConstPrim jConstPrim jt
+    cp = maybe ppConstExpr jConstExpr jt
     td' = text $ typeName n
     jt = lookupPair m `fmap` M.lookup n m
 
@@ -255,9 +255,9 @@ ppPrivateCons :: String -> Doc
 ppPrivateCons n =
     kPrivate <+> text n <> lrparen <+> lbrace <$> rbrace
 
-ppConstDef n d =
-    kPublic <+> kStatic <+> kFinal <+> kInt <+> text n' <+> equals
-                <+> d <> semi
+ppConstantDef n d =
+    kPublic <+> kStatic <+> kFinal <+> kInt <+> text n'
+                <+> equals <+> nest indent d <> semi
   where
     n' = upperName n
 
@@ -359,18 +359,22 @@ ppAnonCodec n jts =
   where
     head = kPublic <+> kStatic <+> kFinal <+> ct <+> text "CODEC" <+> equals
            </> kNew <+> ct <> lrparen
-    body = ppEncode n jts <$> ppDecode n jts
+    body = ppEncode n jts <$> ppDecode n jts <$> ppSize n jts
     ct = text "Codec" <> langle <> text tn <> rangle
     tn = typeName n
 
 ppEncode :: String -> [(String, JType)] -> Doc
 ppEncode n =
-    (nest indent head <+>) . braces . vcat . ppEncodeVars
+    (nest indent head <+>) . braces . ppEncodeBody
   where
     head = kPublic <+> kFinal <+> kVoid <+> text "encode"
            <> tupled [kByteBuffer <+> text "buf", text (tn ++ " val")]
            </> kThrows <+> kCharacterCodingException
     tn = typeName n
+
+ppEncodeBody :: [(String, JType)] -> Doc
+ppEncodeBody =
+    vcat . ppEncodeVars
 
 ppEncodeVars :: [(String, JType)] -> [Doc]
 ppEncodeVars =
@@ -386,16 +390,16 @@ ppEncodeVar (n, jt) =
 
 ppDecode :: String -> [(String, JType)] -> Doc
 ppDecode n =
-    (nest indent head <+>) . braces . vcat . ppDecodeBody n
+    (nest indent head <+>) . braces . ppDecodeBody n
   where
     head = kPublic <+> kFinal <+> text tn <+> text "decode"
            <> tupled [kByteBuffer <+> text "buf"]
            </> kThrows <+> kCharacterCodingException
     tn = typeName n
 
-ppDecodeBody :: String -> [(String, JType)] -> [Doc]
+ppDecodeBody :: String -> [(String, JType)] -> Doc
 ppDecodeBody n jts =
-    ppDecodeVars jts ++ [ppFactoryCall n jts]
+    (vcat $ ppDecodeVars jts) <$> ppFactoryCall n jts
 
 ppDecodeVars :: [(String, JType)] -> [Doc]
 ppDecodeVars =
@@ -408,6 +412,32 @@ ppDecodeVar (n, jt) =
                <> tupled [text "buf"] <> semi
   where
     cn = camelCase n
+    un = upperName n
+
+ppSize :: String -> [(String, JType)] -> Doc
+ppSize n =
+    (nest indent head <+>) . braces . ppSizeBody
+  where
+    head = kPublic <+> kFinal <+> kInt <+> text "size"
+           <> tupled [text (tn ++ " val")]
+    tn = typeName n
+
+ppSizeBody :: [(String, JType)] -> Doc
+ppSizeBody jts =
+    kInt <+> text "n" <+> equals <+> text "0" <> semi
+              <$> (vcat $ ppSizeVars jts)
+              <$> kReturn <+> text "n" <> semi
+
+ppSizeVars :: [(String, JType)] -> [Doc]
+ppSizeVars =
+    map ppSizeVar
+
+ppSizeVar :: (String, JType) -> Doc
+ppSizeVar (n, jt) =
+    text "n +=" <+> text un <> text "_CODEC.size"
+             <> tupled [text ("val.get" ++ tn) <> lrparen] <> semi
+  where
+    tn = typeName n
     un = upperName n
 
 ppCodecDecls :: DeclMap -> [DeclPair] -> [Doc]
@@ -436,7 +466,7 @@ ppJava spec =
         m = specToDeclMap spec $ M.empty
 
     ppDef m (DefConstant (ConstantDef n c)) =
-        ppConstDef n $ ppConstExpr c
+        ppConstantDef n $ ppConstExpr c
     ppDef m (DefTypedef (Typedef n ti)) =
         ppDecl m n $ typedefToDecl ti
 
@@ -463,7 +493,7 @@ ppJava spec =
     ppEnumDetail n (EnumDetail pairs) =
         vcat $ map f pairs
       where
-        f (n, c) = ppConstDef n (text . show $ evalConstPrim c)
+        f (ConstantDef n c) = ppConstantDef n $ ppConstExpr c
 
     ppStructDetail m n (StructDetail decls) =
         kPublic <+> ppIface tn jts
@@ -479,12 +509,12 @@ ppJava spec =
     ppUnionCases m (UnionDetail sel cases mDef) =
         nest indent head <> semi
       where
-        head = kPrivate <+> kStatic <+> kFinal <+> text "Map" <> langle
-               <> (maybe (text "Integer") jType jt) <> char ','
+        head = kPrivate <+> kStatic <+> kFinal <+> text "java.util.Map"
+               <> langle <> (maybe (text "Integer") jType jt) <> char ','
                <+> text "Codec" <> langle <> char '?' <> rangle <> rangle
                <+> text "CASES" <+> equals </> text "XdrUnion.newCases"
                <> tupled (ppUnionPairs m
-                          (maybe ppConstPrim jConstPrim jt) cases)
+                          (maybe ppConstExpr jConstExpr jt) cases)
         jt = lookupPair m `fmap` sp
         sp = declToPair sel
 

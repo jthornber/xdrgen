@@ -8,6 +8,8 @@ module Data.XDR.PrettyPrintRpc
 import Control.Monad
 import Data.Char
 import Data.List
+import Data.Map (Map)
+import qualified Data.Map as M
 import Data.Maybe
 import Data.XDR.AST
 import Data.XDR.PPKeywords
@@ -191,11 +193,11 @@ ppCallPointer xdrs ptr t =
                         ppSizeOf t,
                         text "(xdrproc_t)xdr_" <> ppType t]
 
-ppEnumBody :: [(String, ConstPrim)] -> Doc
+ppEnumBody :: [ConstantDef] -> Doc
 ppEnumBody =
-    braces . punctuate comma . map ppEnumDef
+    braces . punctuate comma . map f
   where
-    ppEnumDef (n, c) = text n <+> text "=" <+> ppConstPrim c
+    f (ConstantDef n c) = text n <+> text "=" <+> ppConstExpr c
 
 ppStructBody :: [Decl] -> Doc
 ppStructBody =
@@ -239,6 +241,10 @@ ppType (TStruct sd) = error "unexpected struct"
 ppType (TUnion ud) = error "unexpected union"
 ppType (TTypedef n) = text n
 
+ppIncludes :: [Module] -> Doc
+ppIncludes =
+    vcat . map ppInclude
+
 ppInclude :: Module -> Doc
 ppInclude mod =
     text "#include" <+> text f
@@ -252,7 +258,8 @@ ppRpcHeader spec =
   where
     header = vcat [text "#ifndef" <+> compileGuard,
                    text "#define" <+> compileGuard,
-                   text "#include <rpc/xdr.h>"]
+                   text "#include <rpc/xdr.h>",
+                   ppIncludes . M.keys $ imports spec]
     footer = text "#endif /*" <+> compileGuard <+> text "*/"
     compileGuard = fileGuard $ moduleName spec
 
@@ -261,10 +268,10 @@ ppRpcHeader spec =
       where
         f = vcat . punctuate linebreak . map ppDef
 
-    ppDef (DefConstant cd) = ppConstDef cd
+    ppDef (DefConstant cd) = ppConstantDef cd
     ppDef (DefTypedef td) = ppTypedef td <> semi
 
-    ppConstDef (ConstantDef n c) =
+    ppConstantDef (ConstantDef n c) =
         text "#define" <+> text n <+> ppConstExpr c
 
     ppTypedef (Typedef n ti) =
@@ -397,7 +404,7 @@ ppRpcImpl spec = show $ ppInclude (moduleName spec) <$> ppSpec spec
     ppSwitchCase (c, d) =
         enclose l r $ ppSwitchCall d
       where
-        l = kCase <+> ppConstPrim c <> colon
+        l = kCase <+> ppConstExpr c <> colon
         r = line <> kBreak
 
     ppSwitchDefault =
