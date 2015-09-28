@@ -19,6 +19,7 @@ import Data.XDR.AST
 import Data.XDR.Parser
 import Data.XDR.PrettyPrinter
 import Data.XDR.PrettyPrintC
+import Data.XDR.PrettyPrintCPP
 import Data.XDR.PrettyPrintJava
 import Data.XDR.PrettyPrintRpc
 
@@ -50,6 +51,8 @@ type Formatter = Specification -> String
 formatters :: Map String Formatter
 formatters = M.fromList [ ("c-header",   ppCHeader)
                         , ("c-impl",     ppCImpl)
+                        , ("c++-header", ppCPPHeader)
+                        , ("c++-impl",   ppCPPImpl)
                         , ("java",       ppJava)
                         , ("rpc-header", ppRpcHeader)
                         , ("rpc-impl",   ppRpcImpl)
