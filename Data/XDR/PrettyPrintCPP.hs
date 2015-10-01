@@ -43,12 +43,30 @@ joinSections txt b e = vcat [ b
 (<-->) = joinSections "//--------------------------------"
 b <-> e = b <$> text "" <$> e
 
+textFragments :: [String] -> Doc
+textFragments = foldr1 (<>) . map text
+
+mname spec separator = case moduleName spec of
+  Module xs -> concat . intersperse separator $ xs
+
+encodeFn :: String -> Doc
+encodeFn n = textFragments [ "void encode(xdr_write_buffer::ptr const &buf, "
+                           , n
+                           , " const &x)"
+                           ]
+
+decodeFn :: String -> Doc
+decodeFn n = textFragments [ "void decode(xdr_read_buffer::ptr const &buf, "
+                           , n
+                           , " &x)"
+                           ]
+
 ----------------------------------------------------------------
 
 ppCPPHeader :: Specification -> String
 ppCPPHeader spec = show $ header <---> body <---> footer
     where
-      body = namespace mname (ppUsings <-> ppSpec spec <--> ppFuncs spec)
+      body = namespace (mname spec "_") (ppUsings <-> ppSpec spec <--> ppFuncs spec)
       namespace nm d = text "namespace" <+> text nm <+> braces [d]
 
       header = vcat [ text "#ifndef" <+> compileGuard
@@ -59,10 +77,7 @@ ppCPPHeader spec = show $ header <---> body <---> footer
       footer = text "#endif"
       compileGuard = text "XDR_" <> text mnameUpper <> text "_H"
 
-      mname = case moduleName spec of
-        Module xs -> concat . intersperse "_" $ xs
-        
-      mnameUpper = map toUpper $ mname
+      mnameUpper = map toUpper $ mname spec "_"
 
       ppUsings = text "using namespace xdr;"
 
@@ -70,12 +85,11 @@ ppCPPHeader spec = show $ header <---> body <---> footer
 
       ppDef (DefConstant cd) = ppConstantDef cd
       ppDef (DefTypedef td) = ppTypedef td
-
       ppConstantDef (ConstantDef n c) = text "#define" <+> text n <+> ppConstExpr c
 
       ppTypedef (Typedef n ti) = text "typedef" <+> ppTypedefInternal n ti <> semi
 
-      ppTypedefInternal n (DefSimple di) = ppDecl (Decl n di)
+      ppTypedefInternal n (DefSimple di) = ppDecl' (Decl n di) False
       ppTypedefInternal n (DefEnum ed) = text "enum" <+> ppEnumDetail ed <+> text n
       ppTypedefInternal n (DefStruct sd) = text "struct" <+> ppStructDetail sd <+> text n
       ppTypedefInternal n (DefUnion ud) = text "struct" <+> ppUnionDetail ud <+> text n
@@ -92,18 +106,21 @@ ppCPPHeader spec = show $ header <---> body <---> footer
                         (map (ppDecl . snd) cases ++ [ppOptional ppDecl mDefault]) <+> text "u"
                  ]
 
-      ppDecl (Decl n (DeclSimple t)) = ppType t <+> varName n
-      ppDecl (Decl n (DeclArray t c)) = ppType t <+> varName n <> (brackets . ppConstExpr $ c)
-      ppDecl (Decl n (DeclVarArray t mc)) = ppVarStruct n t
-      ppDecl (Decl n (DeclOpaque c)) = text "xdr_opaque" <+> varName n <> (brackets . ppConstExpr $ c)
-      ppDecl (Decl n (DeclVarOpaque mc)) = ppVarStruct n (TTypedef "xdr_opaque")
-      ppDecl (Decl n (DeclString mc)) = text "char *" <> varName n
-      ppDecl (Decl n (DeclPointer t)) = ppType t <> text "*" <+> varName n
-      ppDecl DeclVoid = text "void"
+      ppDecl' (Decl n (DeclSimple t)) underscore = ppType t <+> varName n underscore
+      ppDecl' (Decl n (DeclArray t c)) underscore = ppType t <+> varName n underscore <> (brackets . ppConstExpr $ c)
+      ppDecl' (Decl n (DeclVarArray t mc)) underscore = ppVarStruct n t
+      ppDecl' (Decl n (DeclOpaque c)) underscore = text "xdr_opaque" <+> varName n underscore <> (brackets . ppConstExpr $ c)
+      ppDecl' (Decl n (DeclVarOpaque mc)) underscore = ppVarStruct n (TTypedef "xdr_opaque")
+      ppDecl' (Decl n (DeclString mc)) underscore = text "char *" <> varName n underscore
+      ppDecl' (Decl n (DeclPointer t)) underscore = ppType t <> text "*" <+> varName n underscore
+      ppDecl' DeclVoid _ = text "void"
 
-      ppVarStruct n t = text "std::vector<" <> ppType t <> text ">" <+> varName n
+      ppDecl d = ppDecl' d True
 
-      varName n = text n <> text "_"
+      ppVarStruct n t = text "std::vector<" <> ppType t <> text ">" <+> varName n True
+
+      varName n True = text n <> text "_"
+      varName n False = text n
 
       ppType TInt = text "int32_t"
       ppType TUInt = text "uint32_t"
@@ -112,7 +129,7 @@ ppCPPHeader spec = show $ header <---> body <---> footer
       ppType TFloat = text "float"
       ppType TDouble = text "double"
       ppType TQuadruple = text "long double"
-      ppType TBool = text "int32_t"
+      ppType TBool = text "bool"
       ppType (TEnum ed) = text "enum" <+> ppEnumDetail ed
       ppType (TStruct sd) = text "struct" <+> ppStructDetail sd
       ppType (TUnion ud) = text "struct" <+> ppUnionDetail ud
@@ -123,143 +140,82 @@ ppCPPHeader spec = show $ header <---> body <---> footer
       getTypedef (DefTypedef (Typedef n _)) = Just n
       getTypedef _ = Nothing
 
-      declareFuncs n = text_fragments [ "void encode_"
-                                      , n
-                                      , "(xdr_write_buffer::ptr const &buf, "
-                                      , n
-                                      , " const &x);"
-                                      ] <$>
-                       text_fragments [ "void decode_"
-                                      , n
-                                      , "(xdr_read_buffer::ptr const &buf, "
-                                      , n
-                                      , " &x);"
-                                      ]
-                       
-      text_fragments = foldr1 (<>) . map text
-
+      declareFuncs n = (encodeFn n <> text ";") <$>
+                       (decodeFn n <> text ";")
 
 ----------------------------------------------------------------
 
 ppCPPImpl :: Specification -> String
-ppCPPImpl spec = show $ foldr (<--->) empty [cIncludes, packerCode, unpackerCode]
-
+ppCPPImpl spec = show $ foldr (<--->) empty
+                 [ includeHeader spec
+                 , cIncludes
+                 , packerCode spec
+                 , unpackerCode
+                 ]
 
 ----------------------------------------------------------------
+
+includeHeader :: Specification -> Doc
+includeHeader spec = text (show spec) <$> text "#include \"" <> (text $ mname spec "/") <> text ".h\""
 
 cIncludes :: Doc
 cIncludes =
     block [ "#include <arpa/inet.h>"
-          , "#include <vector>"
           ]
 
-packerCode :: Doc
-packerCode =
-    block [ "struct packer {"
-          , "        size_t allocated;"
-          , "        size_t written;"
-          , "        void *data;"
-          , "        void *current;"
-          , "};"
-          , ""
-          , "static struct packer *packer_create(size_t packed_size_hint)"
-          , "{"
-          , "        struct packer *p = malloc(sizeof(*p));"
-          , ""
-          , "        if (!p)"
-          , "                return NULL;"
-          , ""
-          , "        p->allocated = packed_size_hint < 1024 ? 1024 : packed_size_hint;"
-          , "        p->written = 0;"
-          , "        p->data = malloc(p->allocated);"
-          , "        if (!p->data) {"
-          , "                free(p);"
-          , "                return NULL;"
-          , "        }"
-          , "        p->current = p->data;"
-          , ""
-          , "        return p;"
-          , "}"
-          , ""
-          , "static void packer_destroy(struct packer *p)"
-          , "{"
-          , "        free(p->data);"
-          , "        free(p);"
-          , "}"
-          , ""
-          , "static void packer_peek(struct packer *p, void **data, size_t *len)"
-          , "{"
-          , "        *data = p->data;"
-          , "        *len = p->written;"
-          , "}"
-          , ""
-          , "static inline int packer_ensure(struct packer *p, size_t len)"
-          , "{"
-          , "        if (p->allocated - p->written < len) {"
-          , "                void *new_data;"
-          , ""
-          , "                new_data = realloc(p->data, p->allocated * 2);"
-          , "                if (!new_data)"
-          , "                        return 0;"
-          , ""
-          , "                p->allocated *= 2;"
-          , "                p->data = new_data;"
-          , "                p->current = p->data + p->written;"
-          , "        }"
-          , ""
-          , "        return 1;"
-          , "}"
-          , ""
-          , "static inline int packer_write(struct packer *p, void *data, size_t len)"
-          , "{"
-          , "        if (!packer_ensure(p, len))"
-          , "                return 0;"
-          , ""
-          , "        memcpy(p->current, data, len);"
-          , "        p->current += len;"
-          , "        p->written += len;"
-          , "        return 1;"
-          , "}"
-          ]
+packerCode :: Specification -> Doc
+packerCode (Specification _ _ defs) = (vcat . intersperse (text "") . map encodeDef . mapMaybe getTypedef $ defs)
+  where
+    getTypedef (DefTypedef t) = Just t
+    getTypedef _ = Nothing
 
-unpackerCode = block [ "struct unpacker {"
-                     , "        struct pool *mem;"
-                     , "        void *data;"
-                     , "        size_t len;"
-                     , "};"
-                     , ""
-                     , "static struct unpacker *unpacker_create(void *data, size_t len)"
-                     , "{"
-                     , "        struct unpacker *u = malloc(sizeof(*u));"
-                     , "        if (!u)"
-                     , "                return NULL;"
-                     , ""
-                     , "        u->mem = pool_create(len * 2);"
-                     , "        if (!u->mem) {"
-                     , "                free(u);"
-                     , "                return NULL;"
-                     , "        }"
-                     , ""
-                     , "        u->data = data;"
-                     , "        u->len = len;"
-                     , ""
-                     , "        return u;"
-                     , "}"
-                     , ""
-                     , "static void unpacker_destroy(struct unpacker *u)"
-                     , "{"
-                     , "        pool_destroy(u->mem);"
-                     , "        free(u);"
-                     , "}"
-                     , ""
-                     , "static inline int unpacker_read(struct unpacker *u, void *data, size_t len)"
-                     , "{"
-                     , "        if (len > u->len)"
-                     , "                return 0;"
-                     , ""
-                     , "        memcpy(data, u->data, len);"
-                     , "        u->len -= len;"
-                     , "        u->data += len;"
-                     , "        return 1;"
-                     , "}"
-                     ]
+    encodeDef (Typedef n tdi) = encodeFn n <$> braces [encodeBody tdi]
+
+    encodeBody (DefSimple di) = encodeBody' di
+    encodeBody (DefEnum _) = fixme "DefEnum"
+    encodeBody (DefStruct (StructDetail fields)) = vcat . map encodeStructField $ fields
+    encodeBody (DefUnion _) = fixme "DefUnion"
+
+    encodeBody' (DeclSimple t) = text "buf.encode(" <> ppType t <> text ");"
+    encodeBody' (DeclArray t expr) = fixme "array"
+    encodeBody' (DeclVarArray t mexpr) = fixme "var array"
+    encodeBody' _ = finish
+
+    encodeStructField (Decl n (DeclSimple t)) = text "encode(buf, " <> text n <> text "_);"
+    encodeStructField (Decl n (DeclArray t expr)) = text "encode(buf, " <> text n <> text "_);"
+    encodeStructField (Decl n (DeclVarArray t mexpr)) = braces
+      [ text "uint32_t len;" 
+      , text "buf.decode(len);"
+      , text "for (unsigned i = 0; i < len; i++)"
+      , braces [ text n
+               , text 
+        
+               ]
+      , text "encode_array(buf, " <> text n <> text "_);"
+    encodeStructField (Decl n (DeclOpaque expr)) = text "encode_var_array(buf, " <> text n <> text "_);"
+    encodeStructField (Decl n (DeclVarOpaque expr)) = text "encode_var_opaque(buf, " <> text n <> text "_);"
+    encodeStructField (Decl n (DeclString mexpr)) = text "encode_string(buf, " <> text n <> text "_);"
+    encodeStructField (Decl n (DeclPointer t)) = text "encode_ptr(buf, " <> text n <> text "_);"
+    encodeStructField DeclVoid = text ""
+
+    ppType :: Type -> Doc
+    ppType TInt = text "int32_t"
+    ppType TUInt = text "uint32_t"
+    ppType THyper = text "int64_t"
+    ppType TUHyper = text "uint64_t"
+    ppType TFloat = text "float"
+    ppType TDouble = text "double"
+    ppType TQuadruple = text "long double"
+    ppType TBool = text "bool"
+    ppType (TEnum ed) = finish
+    ppType (TStruct sd) = fixme "struct"
+    ppType (TUnion ud) = finish
+    ppType (TTypedef n) = text n
+
+unpackerCode :: Doc
+unpackerCode = fixme "write unpacking code"
+
+fixme :: String -> Doc
+fixme txt = text "// FIXME:" <+> text txt
+
+finish = fixme "finish"
